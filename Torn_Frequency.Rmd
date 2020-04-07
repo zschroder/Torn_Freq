@@ -644,7 +644,6 @@ model_pois <- brm(formula = formula,
 summary(model_pois)
 ```
 
-
 *If you remove CAPE and Shear, does year become a significant predictor of the number of tornadoes on a convective day?* `No it does not. However, the month of the year is encompassed by ID. Is that playing a role?`
 ```{r, eval = FALSE}
 formula = nT | trunc(lb = 10) ~ Years + maxHLCYs + HullAreas + maxVSTMs + (1|ID)
@@ -664,7 +663,7 @@ summary(model_climate)
 ```
 
 ```{r}
-#save(All_Tornadoes, BigDays.sfdfT, BigDayTornadoes, model_pois, gg, gg_int, file = "Torn_Freq.RData")
+#save(All_Tornadoes, BigDays.sfdfT, BigDayTornadoes, model_pois, file = "Torn_Freq.RData")
 load("Torn_Freq.RData")
 ```
 
