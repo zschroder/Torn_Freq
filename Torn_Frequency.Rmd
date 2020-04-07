@@ -1,0 +1,1007 @@
+---
+title: "Predicting tornado numbers on convective days in the United States"
+author: "Zoe Schroder"
+date: "1/4/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+Code for publication in the Journal of Weather and Forecasting. 
+
+*Load the package libraries needed for this research: *
+```{r}
+suppressMessages(library(dplyr))
+suppressMessages(library(sf))
+suppressMessages(library(USAboundaries))
+suppressMessages(library(tmap))
+suppressMessages(library(ggplot2))
+suppressMessages(library(lme4))
+#devtools::install_github("paul-buerkner/brms")
+suppressMessages(library(brms))
+#devtools::install_github("rmcelreath/rethinking")
+suppressMessages(library(rethinking)) 
+suppressMessages(library(tidybayes))
+#devtools::install_github("mvuorre/brmstools")
+suppressMessages(library(brmstools)) 
+suppressMessages(library(bayesplot))
+suppressMessages(library(ggpubr))
+suppressMessages(library(hexbin))
+suppressMessages(library(ggstance))
+suppressMessages(library(modelr))
+suppressMessages(library(xtable))
+suppressMessages(library(sp))
+suppressMessages(library(lubridate))
+suppressMessages(library(zoo))
+```
+
+*I load the data. The data file (BigDays.RData) comes from the DefineBigDays repository on github. (https://github.com/zschroder/DefineBigDays). I copy the BigDays.RData file from the DefineBigDays repository and add it to this project. This can be updated yearly by adding the latest tornado csv file from the Storm Prediction Center. Additionally, we can define an outbreak as an arbitrary number of tornadoes. *
+```{r}
+load("BigDays.RData")
+dim(BigDays.sfdfT)
+```
+
+##################
+## Introduction ##
+##################
+
+Predicting specific characteristics of severe weather outbreaks is an important but challenging problem. Guidance from numerical models helps forecasters outline areas of severe weather threats days in advance. For example, ... Guidance from statistical models helps forecasters quantify probabilities for given severe weather events \citep{HitchensandBrooks2014, ThompsonEtAl2017, Cohen2018, ElsnerSchroder2019}. For example, \cite{Cohen2018} develop a regression model to specify the probability of tornado occurrence given certain environmental and storm-scale conditions. And \cite{ElsnerSchroder2019} extend this model by making use of the cumulative logistic link function that predicts probabilities by for each damage rating.
+
+These latter studies put statistical guidance for predicting tornado outbreak characteristics on a firm mathematical foundation, yet there is room for additional work. For instance, the cumulative logistic regression provides a distribution for the {\it percentage} of tornadoes within each Enhanced Fujita (EF) rating category, but the regression model is silent concerning the overall number of tornadoes. Here we propose a method to model the expected overall number of tornadoes given environmental conditions. The model allows us to quantify the interrelationships between environmental variables and tornado frequency. It also helps in extending the available statistical guidance because output from the proposed model together with output from the cumulative logistic model provides a prediction for the expected number of tornadoes by each EF category. Suppose for example that given current environmental conditions the proposed model predicts a distribution for the total number of tornadoes centered on fifteen while the cumulative logistic regression model predicts that for each tornado there is a fifty percent change of it being EF0, a ten percent chance of it being EF1, a five percent change of it being EF2, and so on. Then a numerical convolution of these two distributions provides an expected number of counts by EF rating as well as the associated uncertainties.
+
+This paper has two goals: (1) demonstrate a statistical methodology for estimating the number of tornadoes given well-known environmental conditions and (2) improve the understanding of the role these environmental conditions have on tornado 'outbreaks'. We accomplish these goals by fitting a truncated Poisson regression model to tornado counts on 'big' convective days (12 UTC to 12 UTC), where the number of tornadoes is at least ten. Thus in demonstrating the approach, we condition our model on the occurrence of a tornado `outbreak' (at least ten tornadoes) as was done in \cite{ElsnerSchroder2019}. Towards improving our understanding of the role environmental conditions play on the number tornadoes in an outbreak, we allow for interactions among the variables. We find ... The paper is outlined as follows. The data used to demonstrate the model are described in section 2.  The mathematics of a truncated Poisson regression are given in section 3. Model results are presented in section 4, and a summary and a list of the main conclusions are given in section 5.
+
+##########
+## Data ##
+##########
+
+We advance our goals by fitting statistical models to a set of observed data aggregated to the level of tornado clusters. Here we describe the available data and the procedures we use to aggregate the values to the cluster level. For our purposes, a cluster is a spatial group of at least ten tornadoes occurring between 12 UTC and 12 UTC. Ten is chosen as a compromise between too few clusters leading to greater uncertainty and too many clusters leading to excessive time required to fit the models \citep{ElsnerSchroder2019}. Cluster size, defined as the number of tornadoes, serves as the response variable in the statistical models. Explanatory variables for the models are extracted from reanalysis data representing the environment prior to the occurrence of the first tornado in the cluster.
+
+## Tornado clusters ##
+
+
+First, we extract the date, time, genesis location, and magnitude for all tornadoes between 1994 and 2018 in the record obtained from the Storm Prediction Center [SPC] (\url{https://www.spc.noaa.gov/gis/svrgis/}). We choose 1994 as the start year because it is the first year of the extensive use of the WSR-88D Radar.  Each row in the data set contains information at the individual tornado level. In total, there are 30~497 tornado records during this period. The geographic coordinates for each genesis location are converted to Lambert conic conformal coordinates, where the projection is centered on 107$^{\circ}$~W longitude. 
+
+*Compute the total number of tornadoes between 1994 and 2018.*
+```{r}
+dim(All_Tornadoes)[1]
+#30,497
+```
+
+Next, we assign to each tornado a cluster identification (ID) based on the space and time differences between genesis locations. Two tornadoes are assigned the same cluster ID if they occur close together in space and time (e.g., 1~km and 1~h).  When the difference between individual tornadoes and existing clusters surpasses 50~000~s ($\sim$ 14~h), the clustering ends. The space-time differences have units of seconds because we divide the spatial distance by 15~m~s$^{-1}$ to account for the average speed of tornado-producing storms. This clustering of tornadoes is identical to that used in \cite{ElsnerSchroder2019} to fit the cumulative logistic model to the damage scale. Additional details on the procedure as well as a comparison of the identified clusters to well-known tornado outbreaks are available in \cite{SchroderElsner2019}.
+
+We keep only clusters that have at least ten tornadoes occurring within the same convective day, which results in 768 clusters containing a total of 17~069 tornadoes. A convective day is defined as a 24-hour period beginning at 1200 UTC \citep{DoswellEtAl2006}. Cluster size is defined here as the number of tornadoes in the cluster ($N$). The average cluster size (for clusters with at least ten tornadoes) is 22 tornadoes and the maximum is 173 tornadoes (April 27, 2011). There are 80 clusters with a size of exactly ten tornadoes. Each cluster varies by area and by where it occurs (Fig.~\ref{fig:Clusters}). The cluster area is defined by the minimum convex hull (black polygon) that includes all the tornado genesis locations. The July 19, 1994 cluster with nine tornadoes over northern Iowa and one over northeast Wisconsin had an area of 33~359 sq. km. The April 27, 2011 cluster had 173 tornadoes spread over more than a dozen states had an area of 1~064~337 sq. km. 
+
+*How many tornadoes between 1994 and 2018 occurred in clusters of ten or more?*
+```{r}
+dim(BigDayTornadoes)[1]
+#17,069
+```
+
+*Compute summary statistics (mean, median, mode,etc) for the clusters*
+```{r}
+min(BigDays.sfdfT$nT)
+#10
+
+max(BigDays.sfdfT$nT)
+#173
+
+median(BigDays.sfdfT$nT)
+#17
+
+mean(BigDays.sfdfT$nT)
+#22.22526
+```
+
+*How many have a nT = 10?*
+```{r}
+sum(BigDays.sfdfT$nT == 10)
+#80
+```
+
+*Create a figure of 4 clusters in the data set.* 
+`Generate the state and county borders`
+```{r}
+sts <- state.name[!state.name %in% c("Alaska", "Hawaii")]
+stateBorders <- us_states(states = sts)
+counties.sf <- us_counties()
+```
+
+`Generate a color ramp that you like`
+```{r}
+cr <- RColorBrewer::brewer.pal(9, "Greys")
+cr <- cr[-c(1:3)]
+```
+
+`Create the unique ID for the All_Tornadoes file`
+```{r}
+All_Tornadoes<- All_Tornadoes %>%
+   mutate(ID = paste0(gsub("-", "", cDate), groupNumber))
+```
+
+`Extract the smallest day and associated tornadoes. Get summary statistics of the big day`
+```{r}
+#Extract the big day using the unique ID created.
+cluster1 <- BigDays.sfdfT %>%
+  filter(ID == 19940719217)
+
+#Generate a convex hull around the cluster.
+cluster1 <- st_convex_hull(cluster1)
+
+#Extract all tornadoes that are in the Day 1
+cluster1torns <- All_Tornadoes %>%
+  filter(ID == 19940719217)
+
+cluster1torns$mag <- as.numeric(cluster1torns$mag)
+cluster1torns$mag2 <- cut(cluster1torns$mag, breaks=c(-1, 0, 1, 2, 3, 4, 5))
+```
+
+```{r}
+A <- tm_shape(stateBorders) + 
+  tm_borders(col = "gray70") +
+tm_shape(cluster1) + 
+  tm_borders(col = "gray15", 
+             alpha = 1, 
+             lwd = 2) +
+  tm_scale_bar(color.dark = "gray70", 
+               width = .3, 
+               size = 1, 
+               lwd = 2, 
+               position = c("left","bottom")) +
+    tm_compass(color.dark = "gray70", 
+             size = 5, 
+             lwd = 2, 
+             position = c("left","top")) + 
+    tm_format("World", 
+              attr.position = c("left", "top"),
+              legend.frame = FALSE,
+              inner.margins = c(.25, .2, .2, .2)) +
+    tm_layout(legend.bg.color = "white", 
+            legend.text.size = .75) + 
+  tm_shape(cluster1torns, 
+         projection = "merc", 
+         is.master = TRUE) +
+    tm_symbols(size = 3, 
+               col = "mag2", 
+               n = 6, 
+               palette = cr, 
+               alpha = 0.8, 
+               border.alpha = 0, 
+               labels = c("0", "1", "2", "3", "4", "5"), 
+               title.col = "EF Rating") +
+    tm_layout(title = "July 19, 1994 \n 10 tornadoes", 
+              title.position = c("center", "top"), 
+              legend.title.size = 1.4,
+              legend.position = c("right", "bottom"), 
+              legend.stack = "horizontal",
+              legend.frame = FALSE, 
+              legend.text.size = 1.2, 
+              legend.width = -0.2, 
+              title.size = 1.5)
+A  
+```
+
+```{r}
+cluster2 <- BigDays.sfdfT %>%
+  filter(ID == 199906061644)
+
+cluster2 <- st_convex_hull(cluster2)
+
+cluster2torns <- All_Tornadoes %>%
+  filter(ID == 199906061644) 
+
+cluster2 %>%
+  summarize(Area = HullArea/(10**6),
+            Duration = Duration/3600)
+
+cluster2torns$mag <- as.numeric(cluster2torns$mag)
+cluster2torns$mag2 <- cut(cluster2torns$mag, breaks=c(-1, 0, 1, 2, 3, 4, 5))
+```
+
+```{r}
+B <- tm_shape(stateBorders) + 
+  tm_borders(col = "gray70") +
+tm_shape(cluster2) + 
+  tm_borders(col = "gray15", 
+             alpha = 1, 
+             lwd = 2) +
+  tm_scale_bar(color.dark = "gray70", 
+               width = .2, 
+               size = 1, 
+               lwd = 2, 
+               position = c("left","bottom")) +
+    tm_compass(color.dark = "gray70", 
+             size = 5, 
+             lwd = 2, 
+             position = c("left","top")) + 
+    tm_format("World", 
+              attr.position = c("left", "top"),
+              legend.frame = FALSE,
+              inner.margins = c(.1, .1, .1, .1)) +
+    tm_layout(legend.bg.color = "white", 
+            legend.text.size = .75) + 
+  tm_shape(cluster2torns, 
+         projection = "merc", 
+         is.master = TRUE) +
+    tm_symbols(size = 3, 
+               col = "mag2", 
+               n = 6, 
+               palette = cr, 
+               alpha = 0.8, 
+               border.alpha = 0, 
+               labels = c("0", "1", "2", "3", "4", "5"), 
+               title.col = "EF Rating") +
+    tm_layout(title = "June 6, 1999 \n 36 tornadoes", 
+              title.position = c("center", "top"), 
+              legend.title.size = 1.4,
+              legend.position = c("right", "bottom"), 
+              legend.stack = "horizontal",
+              legend.frame = FALSE, 
+              legend.text.size = 1.2, 
+              legend.width = -0.15, 
+              title.size = 1.5)
+  B
+```
+
+```{r}
+cluster3 <- BigDays.sfdfT %>%
+  filter(ID == 200802053876)
+
+cluster3 <- st_convex_hull(cluster3)
+
+cluster3torns <- All_Tornadoes %>%
+  filter(ID == 200802053876) 
+
+cluster3 %>%
+  summarize(Area = HullArea/(10**6),
+            Duration = Duration/3600)
+
+cluster3torns$mag <- as.numeric(cluster3torns$mag)
+cluster3torns$mag2 <- cut(cluster3torns$mag, breaks=c(-1, 0, 1, 2, 3, 4, 5))
+```
+
+```{r}
+C <- tm_shape(stateBorders) + 
+  tm_borders(col = "gray70") +
+tm_shape(cluster3) + 
+  tm_borders(col = "gray15", 
+             alpha = 1, 
+             lwd = 2) +
+  tm_scale_bar(color.dark = "gray70", 
+               width = .3, 
+               size = 1, 
+               lwd = 2, 
+               position = c("left","bottom")) +
+    tm_compass(color.dark = "gray70", 
+             size = 5, 
+             lwd = 2, 
+             position = c("left","top")) + 
+    tm_format("World", 
+              attr.position = c("left", "top"),
+              legend.frame = FALSE,
+              inner.margins = c(.1, .1, .2, .1)) +
+    tm_layout(legend.bg.color = "white", 
+            legend.text.size = .75) + 
+  tm_shape(cluster3torns, 
+         projection = "merc", 
+         is.master = TRUE) +
+    tm_symbols(size = 3, 
+               col = "mag2", 
+               n = 6, 
+               palette = cr, 
+               alpha = 0.8, 
+               border.alpha = 0, 
+               labels = c("0", "1", "2", "3", "4", "5"), 
+               title.col = "EF Rating") +
+    tm_layout(title = "February 5, 2008 \n 85 tornadoes", 
+              title.position = c("center", "top"), 
+              legend.title.size = 1.4,
+              legend.position = c("right", "bottom"), 
+              legend.stack = "horizontal",
+              legend.frame = FALSE, 
+              legend.text.size = 1.2, 
+              legend.width = -0.2, 
+              title.size = 1.5)
+C  
+```
+
+```{r}
+#Extract the big day using the unique ID created. 
+cluster4 <- BigDays.sfdfT %>%
+  filter(ID == 201104274630)
+
+#Generate a convex hull around the big day. 
+cluster4 <- st_convex_hull(cluster4)
+
+#Extract all tornadoes that are in the biggestday 
+cluster4torns <- All_Tornadoes %>%
+  filter(ID == 201104274630) 
+
+cluster4torns$mag <- as.numeric(cluster4torns$mag)
+cluster4torns$mag2 <- cut(cluster4torns$mag, breaks=c(-1, 0, 1, 2, 3, 4, 5))
+```
+
+```{r}
+D <- tm_shape(stateBorders) + 
+  tm_borders(col = "gray70") +
+tm_shape(cluster4) + 
+  tm_borders(col = "gray15", 
+             alpha = 1, 
+             lwd = 2) +
+  tm_scale_bar(color.dark = "gray70", 
+               width = .3, 
+               size = 1, 
+               lwd = 2, 
+               position = c("left","bottom")) +
+    tm_compass(color.dark = "gray70", 
+             size = 5, 
+             lwd = 2, 
+             position = c("left","top")) + 
+    tm_format("World", 
+              attr.position = c("left", "top"),
+              legend.frame = FALSE,
+              inner.margins = c(.15, .1, .2, .1)) +
+    tm_layout(legend.bg.color = "white", 
+            legend.text.size = .75) + 
+  tm_shape(cluster4torns, 
+         projection = "merc", 
+         is.master = TRUE) +
+    tm_symbols(size = 3, 
+               col = "mag2", 
+               n = 6, 
+               palette = cr, 
+               alpha = 0.8, 
+               border.alpha = 0, 
+               labels = c("0", "1", "2", "3", "4", "5"), 
+               title.col = "EF Rating") +
+    tm_layout(title = "April 27, 2011 \n 173 tornadoes", 
+              title.position = c("center", "top"), 
+              legend.title.size = 1.4,
+              legend.position = c("right", "bottom"), 
+              legend.stack = "horizontal",
+              legend.frame = FALSE, 
+              legend.text.size = 1.2, 
+              legend.width = -0.2, 
+              title.size = 1.5)
+  
+D
+```
+
+```{r}
+tmap_arrange(A, B, C, D)
+```
+`Figure 1: Examples of four tornado clusters used in this study. Each point is the tornado genesis location colored by the assigned EF rating. The black line is the spatial extent of tornadoes for that convective day defined by the minimum convex hull.` \label{fig:Clusters}
+
+*How long was the largest(smallest) cluster? How large was the largest(smallest)cluster?*
+```{r}
+cluster1 %>%
+  summarize(Area = HullArea/(10**6),
+            Duration = Duration/3600)
+#Area: 33 358.78 sq. km
+#Duration: 3.967 hours
+
+cluster4 %>%
+  summarize(Area = HullArea/(10**6),
+            Duration = Duration/3600)
+#Area: 1 064 337 sq. km
+#Duration: 23.8 hours
+```
+
+There is a distinct seasonality to the occurrence of tornado clusters (Fig.~\ref{fig:ClusterByWeek}). The empirical seven-day probability of at least one cluster is about 30\% for much of the year except during March, April and May when the weekly probabilities approach 80\%. The average number of tornadoes per cluster is less variable.
+
+*Seperate the clusters by week of the year.*
+```{r}
+TornsbyWeek <- BigDays.sfdfT %>% 
+  group_by(week = week(cDate)) %>%
+  summarize(totalclusters = n(),
+            numtorn = sum(nT),
+            avg = numtorn / totalclusters)
+```
+
+**For each week sum the number of clusters and divide by the number of years to get the rate lambda. Then take 1-dpois(lambda) * 100 to get the probability**
+
+`Empirical Probability of getting a cluster by week`
+```{r}
+Years <- 2018-1994 +1
+
+lambdas <- TornsbyWeek$totalclusters / Years
+probs <- (1 - dpois(0, lambdas)) * 100
+
+TornsbyWeek <- cbind(TornsbyWeek, probs)
+```
+
+`Get the week labels for the data`
+```{r}
+x.Date <- as.Date(paste(rep(1994:2018, each = 12), rep(1:12, 2), 1, sep = "-"))
+library(zoo)
+x <- zoo(rnorm(24), x.Date)
+times <- time(x)
+ticks <- as.data.frame(x = seq(times[1], times[length(times)], by = "weeks"))
+
+week <- as.data.frame(ticks[1:53,])
+  
+months <- as.data.frame(format(week, "%b"))
+Mo <- as.data.frame(format(week, "%m"))
+day <- as.data.frame(format(week, "%d"))
+
+dat <- as.data.frame(cbind(week, Mo, months, day))
+colnames(dat) <- c("Week", "Mo", "Month", "Day") 
+
+dat <- dat %>%
+  group_by(Month, Day, Mo) %>%
+  summarize(count = n(),
+            Week = paste0(Month, " ", Day))
+
+
+dat <- dat[order(dat$Mo),]
+```
+
+```{r}
+labels = dat$Week
+```
+
+```{r}
+A <- ggplot(TornsbyWeek, (aes(week))) +
+  geom_line(aes(y = probs), color = "black", lwd = 1) +
+  scale_x_continuous(expand = c(0, 0), breaks = c(seq(1,53,3)), limits = c(1, 53), labels = labels[seq(1, length(labels), 3)]) +
+  scale_y_continuous(breaks = c(seq(0,100,10)), limits = c(0, 100)) + 
+  theme_bw() +
+  xlab("Week") +
+  ylab("Probability of a Cluster")
+
+A + theme(axis.title.y = element_text(colour = "black"), axis.text.y = element_text(color = "black"),  axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title=element_text(size=14))
+```
+
+```{r}
+B <- ggplot(TornsbyWeek, (aes(week))) +
+  geom_line(aes(y = avg), color = "black", lwd = 1) +
+  scale_x_continuous(expand = c(0, 0), breaks = c(seq(1,53,3)), limits = c(1, 53), labels = labels[seq(1, length(labels), 3)]) +
+  scale_y_continuous(breaks = c(seq(0,50,5)), limits = c(0, 50)) + 
+  theme_bw() +
+  xlab("Week") +
+  ylab("Average Cluster Size")
+
+B + theme(axis.title.y = element_text(colour = "black"), axis.text.y = element_text(color = "black"),  axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title=element_text(size=14))
+```
+
+```{r}
+ggarrange(A, B, ncol = 1)
+```
+
+## Environmental Data ##
+
+Environmental conditions for producing tornadoes are well known and include high values of convective available potential energy, convective inhibition, storm-relative helicity, and bulk shear \citep{Brooks1994, RasmussenandBlanchard1998, TippettEtAl2012, TippettEtAl2014, ElsnerSchroder2019}. We obtain the corresponding atmospheric variables associated with these environmental conditions from the National Centers for Atmospheric Research's North American Regional Reanalysis (NARR) which is supported by the National Centers for Environmental Prediction. Each atmospheric variable has numeric values given on a 32-km raster grid and the gridded values are available in three-hour increments starting at 00 UTC.
+
+We select variables at the nearest three-hour time {\it prior} to the occurrence of the first tornado in the cluster. For example, if the first tornado in a cluster occurs at 16:30 UTC we use the atmospheric variables given at 15 UTC. This selection criteria results in a sample of the environment that is less contaminated by the deep convection itself but at a cost that underestimates the severity in cases where rapid increases in conditions favorable for tornadoes occur. We find that roughly 60\% of all clusters have the initial tornado between 18 and 00 UTC (Table~\ref{tab:Ztimes}). We also find that cluster size is largest, on average, for clusters with the first tornado occurring between 15 and 18 UTC.
+```{r}
+ BigDays.sfdfT %>%
+  group_by(NARRZtime) %>%
+  summarize(count = n(),
+            TornTot = sum(nT), 
+            AvgClusSize = TornTot/count)
+
+#What percentage of convective days start between 18Z and 00Z? 
+(210+249) / 767
+#~60%
+```
+`Table 1: Each cluster is categorized by the closest three-hour time (defined by the NARR data) prior to the first tornado.` \label{tab:Ztimes}
+
+Environmental variables considered include convective available potential energy and convective inhibition as computed using the near-surface layer (0 to 180 mb above the ground level) (layer 375,376), storm-relative helicity as computed from winds in the 0 to 3000 m above the ground (layer 323), the $u$ and $v$ components of storm motion as computed from winds in the 0 to 6000 m above the ground (layer 324, 325), and the $u$ and $v$ wind components estimated at 1000 mb (layer 260, 261) and at 500 mb (layer 117, 118). Additionally we consider bulk shear that we compute as the square root of the sum of the squared differences between the $u$ and $v$ wind components at these two levels.
+
+We take the highest (lowest for CIN) value across the grid of values within the area defined by the cluster's convex hull. This is done to capture the extremes of the environmental condition. We note that the May 30, 2003 cluster is missing storm-relative helicity and so it is removed from further consideration. Across the remaining 767 clusters the mean value of regionally highest CAPE is 2~225~J~kg$^{-1}$ and the mean value of regionally lowest CIN is $-$114~J~kg$^{-1}$ (Table \ref{tab:VarValues}). The range of highest bulk shear values is between 5.6 and 47.9 m~s$^{-1}$ and the range of highest storm relative helicity is between 34.3 and 1027 m$^{2}$~s$^{-2}$. Cluster areas range between 361 and 1~064~337~km$^{2}$ with an average of 167~990~km$^{2}$.
+
+*Remove the day with missing helicity values. This day is May 30, 2003.*
+```{r}
+BigDays.sfdfT <- BigDays.sfdfT %>%
+  filter(ID != 200305302651)
+```
+
+*Get the maximum, minimum, and average of the environmetal variables. Create a table displaying this information.*
+```{r}
+maximum <- as.matrix(c(max(BigDays.sfdfT$maxCAPE), max(BigDays.sfdfT$maxVSTM), max(BigDays.sfdfT$maxBS_deep), max(BigDays.sfdfT$maxBS_shallow), max(BigDays.sfdfT$maxHLCY), (max(BigDays.sfdfT$HullArea)*1e-6), max(BigDays.sfdfT$minCIN), max(BigDays.sfdfT$maxUSTM)), ncol = 1)
+
+minimum <- as.matrix(c(min(BigDays.sfdfT$maxCAPE), min(BigDays.sfdfT$maxVSTM), min(BigDays.sfdfT$maxBS_deep), min(BigDays.sfdfT$maxBS_shallow), min(BigDays.sfdfT$maxHLCY), (min(BigDays.sfdfT$HullArea)*1e-6), min(BigDays.sfdfT$minCIN), min(BigDays.sfdfT$maxUSTM)), ncol = 1)
+
+average <- as.matrix(c(mean(BigDays.sfdfT$maxCAPE), mean(BigDays.sfdfT$maxVSTM), mean(BigDays.sfdfT$maxBS_deep), mean(BigDays.sfdfT$maxBS_shallow), mean(BigDays.sfdfT$maxHLCY), (mean(BigDays.sfdfT$HullArea)*1e-6), mean(BigDays.sfdfT$minCIN), mean(BigDays.sfdfT$maxUSTM)), ncol = 1)
+
+Variable <- as.matrix(c("Convective Available Potential Energy", "Northward Storm Motion", "Deep-Layer Bulk Shear", "Shallow-Layer Bulk Shear", "Helicity", "Outbreak Area", "CIN", "Eastward Storm Motion"), ncol = 1)
+
+abbr <- as.matrix(c("CAPE", "VSTM", "DLBS","SLBS", "HLCY", "AREA", "CIN", "USTM"), ncol = 1)
+
+env_variation <- cbind(Variable, abbr, maximum, minimum, average)
+colnames(env_variation) <- c("Variable Name", "Abbreviation", "Maximum", "Minimum", "Average")
+
+xtable(as.data.frame((env_variation))) #round to sig fig
+```
+`Table 2: The range and average highest (lowest for CIN) value of the environmental variables across the 767 tornado clusters used in the study.` \label{tab:VarValues}
+
+#############
+## Truncated Poisson Regression ##
+#############
+
+The purpose of this paper is to demonstrate a type of statistical model that can predict the number of tornadoes from environmental conditions and help us better understand the role these conditions play in producing tornadoes. Poisson regression is a type of generalized linear model that is used when the response variable are counts. Poisson regression assumes the response variable can adequately be described with a Poisson distribution where the logarithm of the rate parameter (expectation) is linearly related to a combination of explanatory variables [see e.g., \cite{ElsnerSchmertmann1993}]. In our case the response variable is cluster size (number of tornadoes in the cluster) for clusters with at least ten tornadoes. Thus the Poisson distribution starts at ten rather than at zero and the models (Fig.~\ref{fig:histtorns}) are left-truncated Poisson regressions. 
+
+*Make a histogram of the number of tornadoes*
+```{r}
+ggplot(BigDays.sfdfT, aes(x = nT)) + 
+  geom_histogram(boundary = 50, bins = 41, alpha = 0.7, color = "white", size = 0.1) + 
+  theme_bw() + 
+  xlab("Number of Tornadoes") + 
+  xlim(NA, 50) +
+  ylab("Number of Outbreaks") + 
+  theme(text = element_text(size=12), panel.border = element_rect(color = "black")) 
+```
+`Figure : Histogram showing the number of clusters by cluster sizes over the range from 10 to 50. Observations for clusters with sizes less than ten are not used.`\label{histtorns}
+
+The number of clusters decreases exponentially with increasing cluster size. There are 80 clusters with ten tornadoes but only ten clusters with 30 tornadoes. The right tail of the count distribution is quite long with the April 27, 2011 cluster having 173 tornadoes (not shown).  However more clusters have 20 or 21 tornadoes than expected from this exponential decay. This deviation is unlikely to be physical. If it is not the result of sampling variability then it is likely due to a reporting bias.
+
+Mathematically, our truncated Poisson regression models are written as
+
+$$
+\begin{aligned}
+    \hbox{N}_i | 10 &\sim \hbox{Poisson}(\lambda_i) \\   
+    \log(\lambda_i) &= \beta_1 x_{i, 1} + \beta_2 x_{i, 2} + \cdots + \beta_p x_{i, p} + \beta_{\hbox{ID}_i} \hbox{ID}_i, \\
+\end{aligned}
+$$
+
+where $N_i$ is the number of tornadoes in cluster $i$ that we assume is adequately described by a Poisson distribution with a rate parameter $\lambda_i$. The logarithm of the rate parameter is linearly related to the $p$ variables $x_{i,j}$ for $j = 1, \ldots p$ through the single-valued parameters $\beta_1, \ldots \beta_p$ and a term that is unique to each cluster ($\beta_{\hbox{ID}_i} \hbox{ID}_i$), where ID$_i$ identifies cluster $i$ and $\beta_{\hbox{ID}_i}$ is a vector of parameters, one for each cluster. The ID term allows for variability specific to the individual cluster that is not represented by the environmental conditions. The $p$ variables include various combinations of the environmental variables and their interactions. For example an interaction between CAPE and bulk shear (BS) is statistically represented with a term like $\beta_k$ CAPE$_i$ $\times$ BS$_i$, where the interaction coefficient is given as $\beta_k$. One of the $p$ variables is cluster area to control for the fact that cluster area is significantly correlated with the cluster size (r = 0.567).
+
+```{r}
+cor.test(BigDays.sfdfT$nT, BigDays.sfdfT$HullArea)
+#0.567
+```
+
+We fit a series of truncated Poisson regression models to the set of 767 tornado clusters using the software environment R (http://www.r-project.org). The models are fit using Bayesian simulations in the Stan computational framework (http://mc-stan.org/) accessed through the \{brms\} package \citep{Burkner2017}. To accelerate the rate at which the simulations converge (and to avoid divergent transitions) to the posterior distribution, we center and scale all variables by subtracting the mean and dividing by the standard deviation. Further we specify the following set of mildly informative prior distributions (Eq.~\ref{PriorDistributions}).
+
+*Scale the variables. scaled by subtracting their means and dividing by their standard deviations. These values are centered on 0 (i.e. mean of zero). to allow the model to easily navigate the space*
+```{r}
+BigDays.sfdfT$maxCAPEs <- scale(BigDays.sfdfT$maxCAPE)
+BigDays.sfdfT$minCINs <- scale(BigDays.sfdfT$minCIN)
+BigDays.sfdfT$maxBS_deeps <- scale(BigDays.sfdfT$maxBS_deep)
+BigDays.sfdfT$maxBS_shallows <- scale(BigDays.sfdfT$maxBS_shallow)
+BigDays.sfdfT$maxSMs <- scale(BigDays.sfdfT$maxSM)
+BigDays.sfdfT$maxHLCYs <- scale(BigDays.sfdfT$maxHLCY)
+BigDays.sfdfT$Years <-  scale(BigDays.sfdfT$Year)
+BigDays.sfdfT$totPopDenss <-  scale(BigDays.sfdfT$totalPopDens)
+BigDays.sfdfT$Lats <-  scale(BigDays.sfdfT$Lat)
+BigDays.sfdfT$Lons <-  scale(BigDays.sfdfT$Lon)
+BigDays.sfdfT$totalPOPs <-  scale(BigDays.sfdfT$totalPOP)
+BigDays.sfdfT$maxDEWs <-  scale(BigDays.sfdfT$maxDEW)
+BigDays.sfdfT$maxMRs <-  scale(BigDays.sfdfT$maxMR)
+BigDays.sfdfT$HullAreas <-  scale(BigDays.sfdfT$HullArea)
+BigDays.sfdfT$maxUSTMs <-  scale(BigDays.sfdfT$maxUSTM)
+BigDays.sfdfT$maxVSTMs <-  scale(BigDays.sfdfT$maxVSTM)
+```
+
+$$
+\begin{aligned}
+\alpha &\sim \hbox{student} \_ \hbox{t}(3, 3, 10) \\ 
+\beta_{1:5} &\sim \hbox{Normal}(0, 5) \\  
+\vec{\beta_j} &\sim \hbox{Normal}(0, \zeta)\\
+\zeta &\sim \hbox{student} \_ \hbox{t}(3, 0, 10) \\   
+\end{aligned}  
+$$
+
+```{r}
+cor(BigDays.sfdfT$totalPOPs, BigDays.sfdfT$HullArea)
+#0.8185096
+
+cor(BigDays.sfdfT$Lats, BigDays.sfdfT$maxVSTM)
+#-0.2278864
+
+cor.test(BigDays.sfdfT$maxDEWs, BigDays.sfdfT$maxMRs)
+#0.979
+```
+
+```{r}
+library(lme4)
+m1 <- glmer(nT ~ maxCAPEs + maxBS_deeps + maxBS_shallows + minCINs + maxHLCYs + HullAreas + maxVSTMs + maxUSTMs + maxDEWs + maxMRs + (1|ID), 
+    data = BigDays.sfdfT, 
+    family = "poisson")
+summary(m1)
+
+m2 <- glmer(nT ~ maxCAPEs + maxBS_deeps + HullAreas + maxVSTMs + maxUSTMs + maxDEWs + maxMRs + (1|ID), 
+    data = BigDays.sfdfT, 
+    family = "poisson")
+summary(m2)
+
+m3 <- glmer(nT ~ maxCAPEs + maxBS_deeps + HullAreas + maxVSTMs + maxUSTMs + maxMRs + (1|ID), 
+    data = BigDays.sfdfT, 
+    family = "poisson")
+summary(m3)
+
+m4 <- glmer(nT ~ maxCAPEs + maxBS_deeps + HullAreas + maxHLCYs + maxVSTMs + (1|ID), 
+    data = BigDays.sfdfT, 
+    family = "poisson")
+summary(m4)
+
+# Check the interactions
+m5 <- glmer(nT ~ maxCAPEs * maxBS_shallows + HullAreas + maxHLCYs + maxVSTMs + (1|ID), 
+    data = BigDays.sfdfT, 
+    family = "poisson")
+summary(m5)
+
+m6 <- glmer(nT ~ maxCAPEs * maxBS_deeps + HullAreas + maxHLCYs + maxVSTMs + (1|ID), 
+    data = BigDays.sfdfT, 
+    family = "poisson")
+summary(m6)
+```
+
+```{r, eval = FALSE}
+formula = nT | trunc(lb = 10) ~ maxCAPEs * maxBS_deeps + maxHLCYs + HullAreas + maxVSTMs + (1|ID)
+family = poisson()
+
+get_prior(formula, data = BigDays.sfdfT, family = family)
+
+model_pois <- brm(formula = formula,
+           data = BigDays.sfdfT,
+           family = family,
+           prior = c(set_prior("normal(0,5)", class = "b"), ##population parameters
+                     set_prior("student_t(3, 3, 10)", class = "Intercept"), #mu, sigma, df 
+                     set_prior("student_t(3, 0, 10)", class = "sd")),
+           seed = 20000, 
+           control = list(adapt_delta = 0.9, max_treedepth = 15))
+summary(model_pois)
+```
+
+
+*If you remove CAPE and Shear, does year become a significant predictor of the number of tornadoes on a convective day?* `No it does not. However, the month of the year is encompassed by ID. Is that playing a role?`
+```{r, eval = FALSE}
+formula = nT | trunc(lb = 10) ~ Years + maxHLCYs + HullAreas + maxVSTMs + (1|ID)
+family = poisson()
+
+get_prior(formula, data = BigDays.sfdfT, family = family)
+
+model_climate <- brm(formula = formula,
+           data = BigDays.sfdfT,
+           family = family,
+           prior = c(set_prior("normal(0,5)", class = "b"), ##population parameters
+                     set_prior("student_t(3, 3, 10)", class = "Intercept"),
+                     set_prior("student_t(3, 0, 10)", class = "sd")),
+           seed = 20000, 
+           control = list(adapt_delta = 0.9, max_treedepth = 15))
+summary(model_climate)
+```
+
+```{r}
+#save(All_Tornadoes, BigDays.sfdfT, BigDayTornadoes, model_pois, gg, gg_int, file = "Torn_Freq.RData")
+load("Torn_Freq.RData")
+```
+
+*Get the posterior predictions for the model *
+```{r}
+predicted <- as.data.frame(BigDays.sfdfT) %>% 
+  dplyr::select(maxCAPEs, minCINs, maxHLCYs, maxBS_deeps, maxVSTMs, HullAreas, ID) %>%
+ add_predicted_draws(model_pois)
+range(predicted$.prediction)
+```
+`add_predicted_draws: adds draws from the posterior "fit", the posterior predictions of the model, or the residuals of a model to the data. In this case, the outcome provides 4000 predictions of the number of tornadoes for each of the 767 convective days [767 * 4000 = 3068000]`
+
+The single-valued $\beta_i$ parameters are assigned a Gaussian distribution centered on zero with a standard deviation of five. The $\beta_{\hbox{ID}}_i$ parameters are assigned a multivariate Gaussian distribution centered on zero with a covariance matrix $\zeta$.
+
+Both the intercept ($\alpha$) and covariance matrix ($\zeta$) follows a $t$ distribution with standard deviation of three and scale of ten. 
+
+Each $\beta$ is the mean coefficient of 4000 samples gathered through a Hamiltonian Monte Carlo with 1000 iterations over four chains.
+
+We determined that using average or minimum values of the environmental variables did not improve the model fit. The maximum values within an cluster provide a better representation of the environments as they are not influenced by synoptic or mesoscale phenomena. Dewpoint and east-west storm motion were not significant predictors of tornado counts within the model. Additionally, the model highlights the interaction between CAPE and shear which indicates the dependent nature of these variables when understanding tornado counts in clusters. 
+
+Predictions for each cluster were collected using a Hamiltonian Monte Carlo (Fig.~\ref{fig:ObsPredHist}). The output indicates a slightly under-dispersed model. The actual tornado counts in clusters ranged from 10 to 173 whereas the model predictions range from 10 to 140 tornadoes. The model performed well with a correlation between the actual and predicted model values of 0.618 (Fig.~\ref{fig:ActualvsPredictPlot}). 
+
+*Scale the predictions to better match the original data*
+```{r}
+pred <- predicted
+pred <- pred %>% group_by(.prediction) %>% summarize(nT = n())
+scaledprediction <- pred %>% mutate(scalenT = nT/4000)
+```
+
+*Make a histogram of the observed to the scaled predictions from the model.*
+```{r}
+( plot_posterior <- ggplot(scaledprediction, aes(x = .prediction, y = scalenT)) + 
+            geom_bar(stat = "identity",
+                 boundary = 50, 
+                 width = 1, 
+                 alpha = 0.9, 
+                 color = "white",
+                 fill = "Grey40",
+                 size = 0.1) +
+  scale_x_continuous(expand = c(0,0), limits = c(9,50)) +
+  #scale_x_log10() + 
+  xlab("Number of Tornadoes") +
+  scale_y_continuous(expand = c(0,0), limits = c(0, 125)) +
+  ylab("Number of Outbreaks") + 
+  ggtitle("Predicted") +
+  theme_bw()  +
+  theme(text = element_text(size=12), plot.background = element_rect(color = "grey40"), panel.border = element_rect(color = "white"), plot.margin=unit(c(0.5, 0.5, 0.5, 0.5),"cm"), plot.title = element_text(hjust = 0.5)))
+
+(plot_nT <- ggplot(BigDays.sfdfT, aes(nT)) + 
+  geom_histogram(boundary = 50, 
+                 bins = 43, 
+                 alpha = 0.9, 
+                 color = "white", 
+                 fill = "Grey40",
+                 size = 0.1) +
+  scale_x_continuous(expand = c(0,0), limits = c(9,50)) +
+  #scale_x_log10() + 
+  xlab("Number of Tornadoes") +
+  scale_y_continuous(expand = c(0,0), breaks = c(0, 25, 50, 75, 100, 125), labels = c("0", "25", "50", "75", "100", "125"), limits = c(0, 125)) +
+  ylab("Number of Outbreaks") + 
+  ggtitle("Observed") +
+  theme_bw() +
+  theme(text = element_text(size=12), plot.background = element_rect(color = "grey40"), panel.border = element_rect(color = "white"), plot.margin=unit(c(0.5, 0.5, 0.5, 0.5),"cm"), plot.title = element_text(hjust = 0.5)))
+
+ggarrange(plot_nT, "",plot_posterior, ncol = 3, widths = c(6,0.1,6))
+```
+`Figure : The actual tornado numbers for clusters compared to the model predicted values. Both have set limits from 10 to 50 because there is only one cluster per category above 50.`\label{PosteriorPredictions}
+
+```{r, eval = FALSE}
+model_pois_output1 <- predict(model_pois)
+```
+`NOTE: The estimate is an average of the number of predicted tornadoes per big day. `
+
+*Model correlation between predicted to actual observation*
+```{r}
+newdata <- data.frame(maxCAPEs = BigDays.sfdfT$maxCAPEs,
+                      maxBS_deeps = BigDays.sfdfT$maxBS_deeps,
+                      maxHLCYs = BigDays.sfdfT$maxHLCYs,
+                      maxVSTMs = BigDays.sfdfT$maxVSTMs,
+                      HullAreas = BigDays.sfdfT$HullAreas, 
+                      ID = NA)
+model_pois_output <- predict(model_pois, newdata = newdata)
+range(BigDays.sfdfT$nT)
+range(model_pois_output[,1])
+
+BigDays.sfdfT <- cbind(BigDays.sfdfT, model_pois_output[,1])
+names(BigDays.sfdfT)[names(BigDays.sfdfT) == 'model_pois_output...1.'] <- 'predictnT'
+
+cor(BigDays.sfdfT$nT, BigDays.sfdfT$predictnT)
+#0.618
+```
+
+*Actual vs Predicted plot*
+```{r}
+cc <- scales::seq_gradient_pal("skyblue", "blue")(seq(0,1,length.out=12))
+
+ggplot(BigDays.sfdfT, aes(x = nT, y = predictnT)) +
+  geom_point(size = 4,  show.legend = FALSE, stroke = 0, alpha = 0.8, color = "Grey40") +
+      #scale_color_continuous()
+      scale_color_manual(values = cc) +
+      #scale_colour_gradient(low = "Grey", high = "Grey70") +
+      geom_abline(slope = 1, size = 1.25) + 
+      ylab("Estimated Tornadoes") + xlab("Actual Tornadoes") +
+      scale_x_log10(limits = c(10, 300), breaks = c(1, 10, 50, 100, 150, 200), labels = c("1", "10", "50", "100", "150", "200")) +
+      scale_y_log10(limits = c(10, 200), breaks = c(1, 10, 50, 100, 150, 200), labels = c("1", "10", "50", "100", "150", "200")) +
+      theme_minimal() + theme(text = element_text(size=10), plot.background = element_rect(colour = 'grey40'))#, panel.border = element_rect(color = "Grey40")) 
+```
+\label{ActualvsPredict}
+
+*Highest Density Interval of the fixed effects*
+```{r}
+model_pois %>%
+  gather_draws(b_maxHLCYs, b_HullAreas, b_maxVSTMs) %>%
+  median_hdi(.width = c(.95, .66)) %>%
+  ggplot(aes(y = .variable, x = .value, xmin = .lower, xmax = .upper)) +
+  geom_pointintervalh() +
+  geom_vline(xintercept = 0, col = "gray70") +
+  scale_y_discrete(labels = c("HullAreas", "Helicity", "North-South Wind")) +
+  scale_x_continuous(limits = c(-.2, .3), breaks = c(-.2, -.1, 0, .1, .2, .3)) +
+  ylab("") + xlab("Coefficient Values") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), text = element_text(size=12))
+```
+*NOTES:*
+`gather_draws: collected the values of the 4000 coefficients for each HLCY, CIN, LATS, POP.`
+`median_HDI: the median of the highest density interval provides interval summaries from the distributions. In this case. It displays the interval of the coefficients for the fixed effects.`
+\label{HDIfixef}
+
+The model coefficients are consistent with the current understanding of the influence of environmental factors on tornado production. The number of tornadoes is explained by increases in HLCY, VSTM, and AREA (Tab.~\ref{tab:Estimates}). The coefficients of the model are interpreted as a percent change in tornado counts for a one standard deviation change in the fixed effect. The cluster area has the largest influence on tornado numbers (Fig.~\ref{fig:MarginalEffects}). The coefficient on AREA indicates that tornadoes increase by 27\% for every 167,990 $km^2$ increase in cluster area when the other variables are held constant. Note that this percent change is formulated as $(e^{\beta_{1:5}}-1)*100$\%. Additionally, tornadoes increase by 7\% for a 313.51 $m^{2}~s^{2}$ increase in HLCY. The coefficient on the VSTM term indicates that tornadoes will increase by 9\% for every 9.07 $m~s^{-1}$increase in VSTM when the other variables are held constant.
+
+*Make table of the model coefficients*
+```{r}
+xtable(exp(fixef(model_pois))-1)
+```
+\label{ModelCoefficients}
+`Sidenote: For a one unit increase in latitude, the number of tornadoes decreases.`
+
+*Work to Un-Scale variables. The standard deviation is the `unit` increase in each variable*
+```{r}
+CINs <- scale(BigDays.sfdfT$minCIN)
+scaleCIN <- attr(CINs, "scaled:scale") #sd: 101
+centerCIN <- attr(CINs, "scaled:center") #mean
+
+CAPEs <- scale(BigDays.sfdfT$maxCAPE)
+scaleCAPE <- attr(CAPEs, "scaled:scale") #sd: 1359
+centerCAPE <- attr(CAPEs, "scaled:center")
+
+BS_deeps <- scale(BigDays.sfdfT$maxBS_deep)
+scaleBS_deep <- attr(BS_deeps, "scaled:scale") #sd: 6.848776
+centerBS_deep <- attr(BS_deeps, "scaled:center")
+
+HLCYs <- scale(BigDays.sfdfT$maxHLCY)
+scaleHLCY <- attr(HLCYs, "scaled:scale") #159.97
+centerHLCY <- attr(HLCYs, "scaled:center")
+
+totPops <- scale(BigDays.sfdfT$totalPOP)
+scalePOP <- attr(totPops, "scaled:scale") #4,471,873 
+centerPOP <- attr(totPops, "scaled:center")
+
+HullAreas <- scale(BigDays.sfdfT$HullArea)
+scaleAreas<- attr(HullAreas, "scaled:scale") #176,075,167,925
+centerAreas <- attr(HullAreas, "scaled:center")
+
+VSTMs <- scale(BigDays.sfdfT$maxVSTM)
+scaleVSTMs <- attr(VSTMs, "scaled:scale") #7.58
+centerVSTMs <- attr(VSTMs, "scaled:center")
+
+Lats <- scale(BigDays.sfdfT$Lat)
+scaleLAT <- attr(Lats, "scaled:scale") #4.3
+centerLAT <- attr(Lats, "scaled:center")
+```
+
+Marginal Effects:
+```{r, eval = FALSE}
+gg <- marginal_effects(model_pois, 
+                       int_conditions = list(maxBSs = c(min(BigDays.sfdfT$maxBSs), 
+                                                        median(BigDays.sfdfT$maxBSs), 
+                                                        max(BigDays.sfdfT$maxBSs))))
+#gg
+#str(gg)
+```
+
+*Conditional effect of HLCY*
+```{r}
+ggHLCY <- gg[[3]]
+ggHLCY
+
+HLCYs <- scale(BigDays.sfdfT$maxHLCY)
+scale <- attr(HLCYs, "scaled:scale")
+center <- attr(HLCYs, "scaled:center")
+
+ggHLCY <- ggHLCY %>%
+  mutate(HLCY = maxHLCYs * scale + center)
+
+(plotHLCY <- ggplot(ggHLCY, aes(x = HLCY, y = estimate__)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = lower__, ymax = upper__), 
+              alpha = .7, col = NA, fill = "red3") +
+  
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(breaks = c(25, 50, 75, 100, 125), limits = c(10,125)) +
+  ylab("Number of Tornadoes") +
+  xlab(expression(paste("Helicity [", m^2," ", s^-2, "]"))) +
+    #ggtitle("A") +
+  theme_minimal(base_size = 18) )
+```
+
+*Marginal effect of AREA*
+```{r}
+ggAreas<- gg[[4]]
+ggAreas
+
+Areas <- scale(BigDays.sfdfT$HullArea)
+scale <- attr(Areas, "scaled:scale")
+center <- attr(Areas, "scaled:center")
+
+ggAreas <- ggAreas %>%
+  mutate(Area = HullAreas * scale + center)
+
+(plotArea <- ggplot(ggAreas, aes(x = Area*1e-6, y = estimate__)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = lower__, ymax = upper__), 
+              alpha = .7, col = NA, fill = "red3") +
+  
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(breaks = c(25, 50, 75, 100, 125), limits = c(10,125)) +
+  ylab("Number of Tornadoes") +
+  xlab(expression(paste("Outbreak Area [", km^2, "]"))) +
+    #ggtitle("B") +
+  theme_minimal(base_size = 18) )
+```
+
+*Marginal effect of North Storm Motion*
+```{r}
+ggVSTM <- gg[[5]]
+ggVSTM
+
+VSTMs <- scale(BigDays.sfdfT$maxVSTM)
+scale <- attr(VSTMs, "scaled:scale")
+center <- attr(VSTMs, "scaled:center")
+
+ggVSTM <- ggVSTM %>%
+  mutate(VSTM = maxVSTMs * scale + center)
+
+(plotVSTM <- ggplot(ggVSTM, aes(x = VSTM, y = estimate__)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = lower__, ymax = upper__), 
+              alpha = .7, col = NA, fill = "red3") +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(breaks = c(25, 50, 75, 100, 125), limits = c(10,125)) +
+  ylab("Number of Tornadoes") +
+    xlab(expression(paste("Northward Storm Motion [m ", s^-1, "]"))) +
+    #ggtitle("C") +
+  theme_minimal(base_size = 18) )
+```
+
+```{r}
+x <- ggarrange(plotHLCY, plotArea, plotVSTM, common.legend = TRUE, ncol = 1)
+annotate_figure(x, left = text_grob("Number of Tornadoes", rot = 90, size = 15))
+```
+`\label{MarginalEffects} Probably do not need these. `
+
+CAPE and BS are the interaction term within the model. This indicates a dependent relationship between these two environmental predictors. The coefficient on the interaction term indicates that tornadoes increase for increases in CAPE. This relationship is dependent on increased BS (Fig.~\ref{fig:MarginalInteraction}). In fact, the influence of CAPE on the number of tornadoes increases significantly for larger values of BS.
+
+```{r}
+gg_int <- conditional_effects(model_pois, 
+                           effects = "maxBS_deeps:maxCAPEs",
+                           int_conditions = list(maxCAPEs = c(1.957059, 0.06772036, -1.966952)))
+```
+
+```{r}
+BSs <- scale(BigDays.sfdfT$maxBS_deep)
+scaleBS <- attr(BSs, "scaled:scale")
+centerBS <- attr(BSs, "scaled:center")
+
+CAPEs <- scale(BigDays.sfdfT$maxCAPE)
+scaleCAPE <- attr(CAPEs, "scaled:scale")
+centerCAPE <- attr(CAPEs, "scaled:center")
+gg_int <- as.data.frame(gg_int$"maxBS_deeps:maxCAPEs")
+```
+
+```{r}
+gg_int$maxCAPEs <- factor(gg_int$maxCAPEs, levels = rev(levels(gg_int$maxCAPEs)))
+
+ggplot(gg_int, aes(x = maxBS_deeps, y = estimate__, group = factor(gg_int$maxCAPEs), col = factor(maxCAPEs))) +
+  geom_ribbon(aes(ymin = lower__, ymax = upper__, fill = factor(maxCAPEs)), 
+              alpha = .7, col = NA)  +
+  geom_line() +
+  xlab(expression(paste("Shear [m ", s^-1, "]"))) + 
+  ylab("Number of Tornadoes") + 
+  theme_bw(base_size = 12) + 
+  scale_x_continuous(expand = c(0, 0), breaks = c(-2, 0, 2), labels = c("14"," 28", "41")) +
+  scale_y_continuous(breaks = c(0, 10, 20, 30, 40, 50, 60, 70, 80)) + #expand = c(0, 0), limits = c(0,80), To start y at 0
+  scale_colour_manual(name = expression(paste("CAPE [J ", kg^-1, "]")),
+                      labels = c("2000", "4000", "6000"),
+                      values = c("grey70", "grey50", "grey30")) +   
+  scale_fill_manual(name = expression(paste("CAPE [J ", kg^-1, "]")),
+                      labels = c("2000", "4000", "6000"),
+                      values = c("grey70", "grey50", "grey30")) + 
+  theme(legend.position = "bottom", panel.border = element_rect(color = "white"), plot.background = element_rect(color = "black")) 
+``` 
+`Figure : Interaction between CAPE and bulk shear. The number of tornadoes increase for increasing values of bulk shear. This relationship is dependent on values of CAPE.` \label{MarginalInteraction}
+
+CAPE and shear are often considered independent quantities \citep{Cohen2018, ElsnerSchroder2019, SchroderElsner2019}. The studies mentioned above treat CAPE and shear as additive quantities in the model \citep{Cohen2018, ElsnerSchroder2019, SchroderElsner2019}. However, this research suggests that these two variables are dependent on one another. Both should be considered when forecasting tornado counts on severe convective days. 
+
+#################
+## Conclusions ##
+#################
+
+Forecasting characteristics of severe weather outbreaks is often challenging. Forecasters use a combination of numerical weather prediction and statistical guidance to outline areas of severe convective weather. However, there is room to expand our understanding of certain outbreak characteristics using the environmental conditions present on a convective day. We introduced a linear regression to quantify tornado counts using environmental conditions for clusters with more than ten tornadoes. 
+
+Coefficients on the environmental conditions and cluster area were consistent with our understanding of the influence they have on outbreak characteristics. Tornado counts increased by 
+\begin{itemize}
+    \item 27\% for every 167,990 $km^{2}$ increase in cluster area
+    \item 7\% for every 313.51 $m^{2}~s^{-2}$ increase in storm-relative helicity
+    \item 9\% for every 9.07 $m~s^{-1}$ increase in storm motion in the north-south direction
+\end{itemize}
+
+The model highlights an interaction term between CAPE and shear. Past research considers these as independent variables \citep{Cohen2018, ElsnerSchroder2019, SchroderElsner2019}. However, our model indicates that tornado counts increase for increases in shear dependent on increases in CAPE. This suggests that both must be considered equally when forecasting tornado counts on severe convective weather days. 
+
+This research is a novel contribution to forecasting characteristics of severe convective weather. Our model allows us to predict the number of tornadoes to expect when given a certain set of environmental conditions. This model could be combined with \citep{Cohen2018} or \cite{ElsnerSchroder2019} to determine the probability of receiving a tornado associated with each damage rating on a convective day. 
+
+*Future Work: Yearly variation in the clusters with more than 10 tornadoes.*
+```{r, eval = FALSE}
+test <- BigDays.sfdfT %>%
+  group_by(Year) %>%
+  summarize(totclusters = n())
+
+x <- ggplot(test, (aes(Year, totclusters))) +
+  geom_line(color = "red4", lwd = 1) +
+  geom_smooth(method = "lm", color = "black") +
+  scale_x_continuous(breaks = c(seq(1994,2018,1)), limits = c(1994, 2018)) +
+  theme_bw() +
+  xlab("Year") +
+  ylab("Number of Clusters") 
+
+x + theme(axis.text.x = element_text(angle = 90, hjust = 1), axis.text = element_text(size = 12), axis.title=element_text(size=14))
+```
+
