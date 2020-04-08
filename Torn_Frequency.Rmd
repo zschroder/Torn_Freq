@@ -404,7 +404,7 @@ The thermo variables (e.g., minLCL) are somewhat better correlated to the rate o
 
 There is a distinct seasonality to the occurrence of tornado clusters (Fig.~\ref{fig:ClusterByWeek}). The empirical seven-day probability of at least one cluster is about 30\% for much of the year except during March, April and May when the weekly probabilities approach 80\%. The average number of tornadoes per cluster is less variable.
 
-*Seperate the clusters by week of the year.*
+*Separate the clusters by week of the year.*
 ```{r}
 TornsbyWeek <- BigDays.sfdfT %>% 
   group_by(week = week(cDate)) %>%
@@ -589,6 +589,9 @@ BigDays.sfdfT$maxMRs <-  scale(BigDays.sfdfT$maxMR)
 BigDays.sfdfT$HullAreas <-  scale(BigDays.sfdfT$HullArea)
 BigDays.sfdfT$maxUSTMs <-  scale(BigDays.sfdfT$maxUSTM)
 BigDays.sfdfT$maxVSTMs <-  scale(BigDays.sfdfT$maxVSTM)
+
+
+BigDays.sfdfT$TorPerHours <- scale(BigDays.sfdfT$TorPerHour)
 ```
 
 $$
@@ -643,6 +646,11 @@ m6 <- glmer(nT ~ maxCAPEs * maxBS_deeps + HullAreas + maxHLCYs + maxVSTMs + (1|I
     data = BigDays.sfdfT, 
     family = "poisson")
 summary(m6)
+
+m7 <- glmer(nT ~ HullAreas + TorPerHours + Years  + maxCAPEs + maxBS_deeps + maxHLCYs + maxVSTMs + (1|ID), 
+    data = BigDays.sfdfT, 
+    family = "poisson")
+summary(m7)
 ```
 
 ```{r, eval = FALSE}
