@@ -400,7 +400,7 @@ df <- BigDays.sfdfT %>%
   mutate(TorPerHour = nT/as.numeric(Duration) * 3600)
 ```
 
-The thermo variables are better correlated with the rate of tornado production `TorPerHour` than the number of tornadoes `nT`. The opposite is the case for the kinematic variables.
+The thermo variables (e.g., minLCL) are somewhat better correlated to the rate of tornado production `TorPerHour` than to the number of tornadoes `nT`. The opposite is the case for the kinematic variables.
 
 There is a distinct seasonality to the occurrence of tornado clusters (Fig.~\ref{fig:ClusterByWeek}). The empirical seven-day probability of at least one cluster is about 30\% for much of the year except during March, April and May when the weekly probabilities approach 80\%. The average number of tornadoes per cluster is less variable.
 
@@ -417,7 +417,7 @@ TornsbyWeek <- BigDays.sfdfT %>%
 
 `Empirical Probability of getting a cluster by week`
 ```{r}
-Years <- 2018-1994 +1
+Years <- 2018-1994 + 1
 
 lambdas <- TornsbyWeek$totalclusters / Years
 probs <- (1 - dpois(0, lambdas)) * 100
@@ -457,30 +457,33 @@ labels = dat$Week
 
 ```{r}
 A <- ggplot(TornsbyWeek, (aes(week))) +
-  geom_line(aes(y = probs), color = "black", lwd = 1) +
+  geom_smooth(aes(x = week, y = probs/100), span = .5, se = FALSE, color = "gray70", size = 1) +
+  geom_line(aes(y = probs/100), color = "black", lwd = 1) +
   scale_x_continuous(expand = c(0, 0), breaks = c(seq(1,53,3)), limits = c(1, 53), labels = labels[seq(1, length(labels), 3)]) +
-  scale_y_continuous(breaks = c(seq(0,100,10)), limits = c(0, 100)) + 
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) + 
+#  geom_smooth(aes(x = week, y = probs/100), span = .5, se = FALSE, color = "gray70", size = 1) +
   theme_bw() +
-  xlab("Week") +
-  ylab("Probability of a Cluster")
+  xlab("") +
+  ylab("Probability of a Cluster\n(At least ten tornadoes)")
 
-A + theme(axis.title.y = element_text(colour = "black"), axis.text.y = element_text(color = "black"),  axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title=element_text(size=14))
+A <- A + theme(axis.title.y = element_text(colour = "black"), axis.text.y = element_text(color = "black"),  axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title=element_text(size=14)) + ggtitle("A")
 ```
 
 ```{r}
 B <- ggplot(TornsbyWeek, (aes(week))) +
+  geom_smooth(aes(x = week, y = avg), span = .5, se = FALSE, color = "gray70", size = 1) +
   geom_line(aes(y = avg), color = "black", lwd = 1) +
   scale_x_continuous(expand = c(0, 0), breaks = c(seq(1,53,3)), limits = c(1, 53), labels = labels[seq(1, length(labels), 3)]) +
-  scale_y_continuous(breaks = c(seq(0,50,5)), limits = c(0, 50)) + 
+  scale_y_continuous(breaks = c(seq(0,50,10)), limits = c(0, 50)) + 
   theme_bw() +
-  xlab("Week") +
-  ylab("Average Cluster Size")
+  xlab("") +
+  ylab("Average Cluster Size\n(Number of tornadoes)")
 
-B + theme(axis.title.y = element_text(colour = "black"), axis.text.y = element_text(color = "black"),  axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title=element_text(size=14))
+B <- B + theme(axis.title.y = element_text(colour = "black"), axis.text.y = element_text(color = "black"),  axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title=element_text(size=14)) + ggtitle("B")
 ```
 
 ```{r}
-ggarrange(A, B, ncol = 1)
+ggarrange(A, B, ncol = 2)
 ```
 
 ## Environmental Data ##
