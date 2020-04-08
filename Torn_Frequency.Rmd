@@ -590,9 +590,18 @@ BigDays.sfdfT$HullAreas <-  scale(BigDays.sfdfT$HullArea)
 BigDays.sfdfT$maxUSTMs <-  scale(BigDays.sfdfT$maxUSTM)
 BigDays.sfdfT$maxVSTMs <-  scale(BigDays.sfdfT$maxVSTM)
 
-
 BigDays.sfdfT$TorPerHours <- scale(BigDays.sfdfT$TorPerHour)
 ```
+
+## Log-linear models
+
+I think we should simplify things by using log-linear models. Cluster size, cluster area, and tornado production rate.
+```{r}
+summary(lm(log(nT) ~  maxCAPE * maxBS_deep + maxBS_shallow + minCIN, data = BigDays.sfdfT))
+summary(lm(log(as.numeric(HullArea)) ~  maxCAPE + maxBS_shallow + maxBS_deep  + minCIN, data = BigDays.sfdfT))
+summary(lm(log(TorPerHour) ~  maxCAPE + maxBS_deep + Lat + Lon, data = BigDays.sfdfT))
+```
+
 
 $$
 \begin{aligned}
