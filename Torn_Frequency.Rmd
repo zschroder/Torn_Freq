@@ -387,6 +387,21 @@ cluster4 %>%
 #Duration: 23.8 hours
 ```
 
+Other big cluster statistics.
+```{r}
+df <- BigDays.sfdfT %>% 
+  st_drop_geometry() %>%
+  mutate(TorPerHour = nT/as.numeric(Duration) * 3600) %>%
+  select(cDate, nT, Duration, TorPerHour) %>%
+  arrange(desc(TorPerHour))
+
+df <- BigDays.sfdfT %>% 
+  st_drop_geometry() %>%
+  mutate(TorPerHour = nT/as.numeric(Duration) * 3600)
+```
+
+The thermo variables are better correlated with the rate of tornado production `TorPerHour` than the number of tornadoes `nT`. The opposite is the case for the kinematic variables.
+
 There is a distinct seasonality to the occurrence of tornado clusters (Fig.~\ref{fig:ClusterByWeek}). The empirical seven-day probability of at least one cluster is about 30\% for much of the year except during March, April and May when the weekly probabilities approach 80\%. The average number of tornadoes per cluster is less variable.
 
 *Seperate the clusters by week of the year.*
