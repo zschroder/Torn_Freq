@@ -38,6 +38,10 @@ suppressMessages(library(zoo))
 *I load the data. The data file (BigDays.RData) comes from the DefineBigDays repository on github. (https://github.com/zschroder/DefineBigDays). I copy the BigDays.RData file from the DefineBigDays repository and add it to this project. This can be updated yearly by adding the latest tornado csv file from the Storm Prediction Center. Additionally, we can define an outbreak as an arbitrary number of tornadoes. *
 ```{r}
 load("BigDays.RData")
+
+BigDays.sfdfT <- BigDays.sfdfT %>%
+  mutate(TorPerHour = nT/as.numeric(Duration) * 3600,
+         TorPerKm = nT/as.numeric(HullArea) * 10^6)
 dim(BigDays.sfdfT)
 ```
 
