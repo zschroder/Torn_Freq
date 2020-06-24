@@ -123,6 +123,17 @@ All_Tornadoes<- All_Tornadoes %>%
    mutate(ID = paste0(gsub("-", "", cDate), groupNumber))
 ```
 
+```{r}
+BigDays.sfdfT <- BigDays.sfdfT %>%
+  mutate(A = as.numeric(HullArea)/10^10,
+         CAPE = maxCAPE/1000,
+         CIN = minCIN/100,
+         DLBS = maxBS_deep/10,
+         SLBS = maxBS_shallow/10)
+dim(BigDays.sfdfT)
+```
+
+
 `Extract the smallest day and associated tornadoes. Get summary statistics of the big day`
 ```{r}
 #Extract the big day using the unique ID created.
@@ -417,7 +428,9 @@ TornsbyWeek <- BigDays.sfdfT %>%
             avgsize = numtorn / totalclusters,
             tornrate = mean(TorPerHour), 
             torndens = mean(TorPerKm), 
-            avgarea = mean(HullArea * (10^-6)))
+            avgarea = mean(HullArea * (10^-6)), 
+            avgcas = mean(GroupDayCas),
+            avgcasperkm = mean((GroupDayCas/((totalPOP+1)/1000000))))
 ```
 
 **For each week sum the number of clusters and divide by the number of years to get the rate lambda. Then take 1-dpois(lambda) * 100 to get the probability**
@@ -464,77 +477,54 @@ labels = dat$Week
 
 ```{r}
 A <- ggplot(TornsbyWeek, (aes(week))) +
-  geom_smooth(aes(x = week, y = probs/100), span = .5, se = FALSE, color = "gray70", size = 1) +
+  #geom_smooth(aes(x = week, y = probs/100), span = .5, se = FALSE, color = "gray70", size = 1) +
   geom_line(aes(y = probs/100), color = "black", lwd = 1) +
   scale_x_continuous(expand = c(0, 0), breaks = c(seq(1,53,3)), limits = c(1, 53), labels = labels[seq(1, length(labels), 3)]) +
-  scale_y_continuous(limits = c(0, 1), labels = scales::percent) + 
+  scale_y_continuous(limits = c(0, 1)) + 
 #  geom_smooth(aes(x = week, y = probs/100), span = .5, se = FALSE, color = "gray70", size = 1) +
   theme_bw() +
   xlab("") +
-  ylab("Probability of a Cluster\n(at least ten tornadoes)")
+  ylab("Probability of a cluster\n ")
 
-A <- A + theme(axis.title.y = element_text(colour = "black"), axis.text.y = element_text(color = "black"),  axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title=element_text(size=14)) 
+A <- A + theme(panel.grid = element_blank(), axis.title.y = element_text(colour = "black"), axis.text.y = element_text(color = "black"),  axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title=element_text(size=14)) + ggtitle("A")
 ```
 Figure 2: Probability of a Cluster
 
 
 ```{r}
-p1 <- ggplot(TornsbyWeek, (aes(week))) +
-  geom_smooth(aes(x = week, y = avgsize), span = .5, se = FALSE, color = "gray70", size = 1) +
+B <- ggplot(TornsbyWeek, (aes(week))) +
+  #geom_smooth(aes(x = week, y = avgsize), span = .5, se = FALSE, color = "gray70", size = 1) +
   geom_line(aes(y = avgsize), color = "black", lwd = 1) +
   scale_x_continuous(expand = c(0, 0), breaks = c(seq(1,53,3)), limits = c(1, 53), labels = labels[seq(1, length(labels), 3)]) +
   scale_y_continuous(breaks = c(seq(0,50,10)), limits = c(0, 50)) + 
   theme_bw() +
   xlab("") +
-  ylab("Average Cluster Size\n(Number of tornadoes)")
+  ylab("Number of tornadoes\n ")
 
-A <- p1 + theme(axis.title.y = element_text(colour = "black"), axis.text.y = element_text(color = "black"),  axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title=element_text(size=14)) + ggtitle("A")
+B <- B + theme(panel.grid = element_blank(), axis.title.y = element_text(colour = "black"), axis.text.y = element_text(color = "black"),  axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title=element_text(size=14)) + ggtitle("B")
 ```
 
 ```{r}
-p2 <- ggplot(TornsbyWeek, (aes(week))) +
-  geom_smooth(aes(x = week, y = as.numeric(avgarea)), span = .5, se = FALSE, color = "gray70", size = 1) +
-  geom_line(aes(y = as.numeric(avgarea)), color = "black", lwd = 1) +
+C <- ggplot(TornsbyWeek, (aes(week))) +
+  #geom_smooth(aes(x = week, y = as.numeric(avgcasperkm)), span = .5, se = FALSE, color = "gray70", size = 1) +
+  geom_line(aes(y = as.numeric(avgcasperkm)), color = "black", lwd = 1) +
   scale_x_continuous(expand = c(0, 0), breaks = c(seq(1,53,3)), limits = c(1, 53), labels = labels[seq(1, length(labels), 3)]) +
-  scale_y_continuous(breaks = c(seq(25000,375000,25000)), limits = c(0, 375000)) + 
+  #scale_y_continuous(breaks = c(seq(0,150,25)), limits = c(0, 150)) + 
   theme_bw() +
   xlab("") +
-  ylab("Average Cluster Area\n [in sq. km]")
+  ylab("Number of casualties\n")
 
-B <- p2 + theme(axis.title.y = element_text(colour = "black"), axis.text.y = element_text(color = "black"),  axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title=element_text(size=14)) + ggtitle("B")
+C <- C + theme(panel.grid = element_blank(), axis.title.y = element_text(colour = "black"), axis.text.y = element_text(color = "black"),  axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title=element_text(size=14)) + ggtitle("C")
+C
 ```
+
 
 ```{r}
-p3 <- ggplot(TornsbyWeek, (aes(week))) +
-  geom_smooth(aes(x = week, y = as.numeric(torndens)), span = .5, se = FALSE, color = "gray70", size = 1) +
-  geom_line(aes(y = as.numeric(torndens)), color = "black", lwd = 1) +
-  scale_x_continuous(expand = c(0, 0), breaks = c(seq(1,53,3)), limits = c(1, 53), labels = labels[seq(1, length(labels), 3)]) +
-  scale_y_continuous(breaks = c(seq(0.000,0.004,0.001)), limits = c(0, 0.004)) + 
-  theme_bw() +
-  xlab("") +
-  ylab("Average Tornado Density\n [in number of tornadoes per sq. km]")
-
-C <- p3 + theme(axis.title.y = element_text(colour = "black"), axis.text.y = element_text(color = "black"),  axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title=element_text(size=14)) + ggtitle("C")
+ggarrange(A, B, C, ncol = 1)
 ```
 
-```{r}
-p4 <- ggplot(TornsbyWeek, (aes(week))) +
-  geom_smooth(aes(x = week, y = as.numeric(tornrate)), span = .5, se = FALSE, color = "gray70", size = 1) +
-  geom_line(aes(y = as.numeric(tornrate)), color = "black", lwd = 1) +
-  scale_x_continuous(expand = c(0, 0), breaks = c(seq(1,53,3)), limits = c(1, 53), labels = labels[seq(1, length(labels), 3)]) +
-  scale_y_continuous(breaks = c(seq(0,4,0.5)), limits = c(0, 4)) + 
-  theme_bw() +
-  xlab("") +
-  ylab("Average Tornado Rate\n [in number of tornadoes per hour]")
-
-D <- p4 + theme(axis.title.y = element_text(colour = "black"), axis.text.y = element_text(color = "black"),  axis.text.x = element_text(angle = 45, hjust = 1), axis.text = element_text(size = 12), axis.title=element_text(size=14)) + ggtitle("D")
-```
-
-```{r}
-ggarrange(A, B, C, D)
-```
-
-
+Fig 3: Align the horizontal axis Jan 1st shifted in 1st Facet Wrap align them. Gonna have to play with axis title. Don't need percentages. Axis labels. A: Probability of a cLuster (remove 2nd row) B: Number of tornadoes (Remove capital cluster) C: Number of casualties 
+Last panel casualties per population (Northern plains with fewer people of the dip? Normalize the data by population.) avg number of casualties per 1000 people per week. Take a look. Potentially remove grid lines. 
 ## Environmental Data ##
 
 Environmental conditions for producing tornadoes are well known and include high values of convective available potential energy, convective inhibition, storm-relative helicity, and bulk shear \citep{Brooks1994, RasmussenandBlanchard1998, TippettEtAl2012, TippettEtAl2014, ElsnerSchroder2019}. We obtain the corresponding atmospheric variables associated with these environmental conditions from the National Centers for Atmospheric Research's North American Regional Reanalysis (NARR) which is supported by the National Centers for Environmental Prediction. Each atmospheric variable has numeric values given on a 32-km raster grid and the gridded values are available in three-hour increments starting at 00 UTC.
@@ -558,7 +548,7 @@ Environmental variables considered include convective available potential energy
 We take the highest (lowest for CIN) value across the grid of values within the area defined by the cluster's convex hull. This is done to capture the extremes of the environmental condition. We note that the May 30, 2003 cluster is missing storm-relative helicity and so it is removed from further consideration. Across the remaining 767 clusters the mean value of regionally highest CAPE is 2~225~J~kg$^{-1}$ and the mean value of regionally lowest CIN is $-$114~J~kg$^{-1}$ (Table \ref{tab:VarValues}). The range of highest bulk shear values is between 5.6 and 47.9 m~s$^{-1}$ and the range of highest storm relative helicity is between 34.3 and 1027 m$^{2}$~s$^{-2}$. Cluster areas range between 361 and 1~064~337~km$^{2}$ with an average of 167~990~km$^{2}$.
 
 *Remove the day with missing helicity values. This day is May 30, 2003.*
-```{r}
+```{r, eval = FALSE}
 BigDays.sfdfT <- BigDays.sfdfT %>%
   filter(ID != 200305302651)
 ```
@@ -599,76 +589,177 @@ cor(BigDays.sfdfT$maxBS_shallow, BigDays.sfdfT$maxHLCY)
 #0.7556492
 ```
 
-## Log-linear models
+```{r}
+(plot_nT <- ggplot(BigDays.sfdfT, aes(nT)) + 
+  geom_histogram(boundary = 50, 
+                 bins = 43, 
+                 alpha = 0.9, 
+                 color = "white", 
+                 fill = "Grey40",
+                 size = 0.1) +
+  scale_x_continuous(expand = c(0,0), limits = c(9,50)) +
+  #scale_x_log10() + 
+  xlab("Number of Tornadoes") +
+  scale_y_continuous(expand = c(0,0), breaks = c(0, 25, 50, 75, 100), labels = c("0", "25", "50", "75", "100"), limits = c(0, 100)) +
+  ylab("Number of Clusters") + 
+  ggtitle("A") +
+  theme_bw() +
+  theme(text = element_text(size=12), plot.background = element_rect(color = "grey40"), panel.border = element_rect(color = "white"), plot.margin=unit(c(0.5, 0.5, 0.5, 0.5),"cm")))
+
+(plot_cas <- ggplot(BigDays.sfdfT, aes(GroupDayCas)) + 
+  geom_histogram(boundary = 50, 
+                 bins = 26, 
+                 alpha = 0.9, 
+                 color = "white", 
+                 fill = "Grey40",
+                 size = 0.1) +
+  scale_x_continuous(expand = c(0,0),limits = c(0,50)) +
+  #scale_x_log10() + 
+  xlab("Number of Casualties") +
+  scale_y_continuous(expand = c(0,0), breaks = c(0, 100, 200, 300, 400), labels = c("0", "100", "200", "300", "400"), limits = c(0, 400)) +
+  ylab("Number of Clusters") + 
+  ggtitle("B") +
+  theme_bw() +
+  theme(text = element_text(size=12), plot.background = element_rect(color = "grey40"), panel.border = element_rect(color = "white"), plot.margin=unit(c(0.5, 0.5, 0.5, 0.5),"cm")))
+```
+
+```{r}
+ggarrange(plot_nT, plot_cas, ncol = 2)
+```
+## Model Selection
 
 I think we should simplify things by using log-linear models. Cluster size, cluster area, and tornado production rate.
 
-## Cluster Size: 
+Consider only CAPE, CIN, BS (deep & shallow)
 
+## Estimate the Number of Tornadoes
 ```{r}
-summary(lm(log(nT) ~ maxCAPE + maxBS_deep + maxBS_shallow + minCIN + maxVSTM + maxUSTM + maxHLCY + totalPOP, data = BigDays.sfdfT))
+library(MASS)
 
-summary(lm(log(nT) ~ maxCAPE + maxBS_deep + minCIN + maxVSTM + maxHLCY + totalPOP, data = BigDays.sfdfT))
+modelInitial <- glm.nb(nT ~ A + Lat + Lon + Year + CAPE + CIN + DLBS + SLBS, data = BigDays.sfdfT)
+summary(modelInitial)
 
-summary(lm(log(nT) ~  maxCAPE * maxBS_deep + maxBS_shallow + minCIN  + maxVSTM + totalPOP, data = BigDays.sfdfT))
+modelInitialPoisson <- glm(nT ~ A + Lat + Lon + CAPE + CIN + DLBS + SLBS, family = "poisson", data = BigDays.sfdfT)
+summary(modelInitialPoisson)
 
-summary(lm(log(nT) ~  maxCAPE * maxBS_deep + maxHLCY + minCIN  + maxVSTM + totalPOP, data = BigDays.sfdfT))
-# better model 
+modelFinal <- glm.nb(nT ~ A + CAPE + DLBS + SLBS, data = BigDays.sfdfT)
+summary(modelFinal)
+
+(exp(coef(modelFinal)) - 1) * 100
+
+summary(lm(log(nT) ~ HullArea + maxCAPE + maxBS_deep + maxBS_shallow, data = BigDays.sfdfT))
+
+
+hist(resid(modelFinal))
+range(exp(predict(modelFinal)))
+plot(log(BigDays.sfdfT$nT), predict(modelFinal))
+cor(BigDays.sfdfT$nT, predict(modelFinal, type = "response"))
 ```
 
-## Cluster Area: 
-
 ```{r}
-summary(lm(log(as.numeric(HullArea)) ~ maxCAPE + maxBS_deep + maxBS_shallow + minCIN + maxVSTM + maxUSTM + maxHLCY + totalPOP, data = BigDays.sfdfT))
-
-summary(lm(log(as.numeric(HullArea)) ~ maxCAPE + maxBS_deep + maxBS_shallow + minCIN + maxVSTM + maxUSTM + totalPOP, data = BigDays.sfdfT))
-
-summary(lm(log(as.numeric(HullArea)) ~  maxCAPE + maxBS_shallow + minCIN + maxVSTM + maxUSTM + totalPOP, data = BigDays.sfdfT))
-#Better Model!
-
-summary(lm(log(as.numeric(HullArea)) ~  maxCAPE * maxBS_shallow + minCIN + maxVSTM + maxUSTM + totalPOP, data = BigDays.sfdfT))
+(plotresid_nT <- ggplot(modelFinal, aes(.resid)) + 
+  geom_histogram(bins = 30, 
+                 alpha = 0.9, 
+                 color = "white", 
+                 fill = "Grey40",
+                 size = 0.1) +
+   xlab("Residuals")  +
+  ylab("Count") + 
+ # ggtitle("B") +
+  theme_bw() +
+  theme(text = element_text(size=12), plot.background = element_rect(color = "grey40"), panel.border = element_rect(color = "white"), plot.margin=unit(c(0.5, 0.5, 0.5, 0.5),"cm")))
 ```
 
-## Tornado Density: 
+```{r, eval = FALSE}
+modelglmer.nb <- glmer.nb(nT ~ scale(HullArea) + scale(maxCAPE) + scale(maxBS_deep) + scale(maxBS_shallow) + (1|Season), data = BigDays.sfdfT)
+summary(modelglmer.nb) # no convergence if interaction term is included
 
-```{r}
-summary(lm(log(TorPerKm) ~ maxCAPE + maxBS_deep + maxBS_shallow + minCIN + maxVSTM + maxUSTM + maxHLCY + totalPOP, data = BigDays.sfdfT))
+summary(glm.nb(nT ~ scale(HullArea) + scale(maxCAPE) + scale(avgCIN) + scale(maxBS_deep) + scale(maxBS_shallow), data = BigDays.sfdfT))
 
-summary(lm(log(TorPerKm) ~ maxCAPE + maxBS_shallow + minCIN + maxVSTM + maxUSTM + maxHLCY + totalPOP, data = BigDays.sfdfT))
-# Better Model!
-
-summary(lm(log(TorPerKm) ~  maxBS_deep + minCIN  + Lat + Lon + totalPOP, data = BigDays.sfdfT))
+modelFinal <- glm.nb(nT ~ HullArea + maxCAPE + maxBS_deep + maxBS_shallow, data = BigDays.sfdfT[BigDays.sfdfT$Mo %in% c(10, 11),])
+summary(modelFinal)
 ```
 
-## Tornado Rate: 
+```{r}
+predsnT <- (predict(modelFinal))
+BigDays.sfdfT = cbind(BigDays.sfdfT, predsnT)
+
+cc <- scales::seq_gradient_pal("skyblue", "blue")(seq(0,1,length.out=12))
+
+ggplot(BigDays.sfdfT, aes(x = log(nT), y = predsnT)) +
+  geom_point(size = 4,  show.legend = FALSE, stroke = 0, alpha = 0.8, color = "Grey40") +
+      #scale_color_continuous()
+      scale_color_manual(values = cc) +
+      #scale_colour_gradient(low = "Grey", high = "Grey70") +
+      geom_abline() + 
+      ylab("Estimated Tornadoes") + 
+      xlab("Actual Tornadoes") +
+      scale_x_log10(breaks = c(2.3, 3.2, 3.9 ,4.6, 5.01), labels = c("10", "25", "50", "100", "150")) +
+      scale_y_log10(limits = c(2.3, 5.03), breaks = c(2.3, 3.2, 3.9 ,4.6, 5.01), labels = c("10", "25", "50", "100", "150")) +
+      theme_minimal() + 
+        theme(text = element_text(size=10), plot.background = element_rect(colour = 'grey40'))#, panel.border = element_rect(color = "Grey40")) 
+```
+## Model for Casualties
 
 ```{r}
-summary(lm(log(TorPerHour) ~ maxCAPE + maxBS_deep + maxBS_shallow + minCIN + maxVSTM + maxUSTM + maxHLCY + totalPOP, data = BigDays.sfdfT)) 
+modelInitialC <- glm.nb(GroupDayCas ~ totalPOP + maxCAPE + minCIN + maxBS_deep + maxBS_shallow + Lat + Lon + Year, data = BigDays.sfdfT)
+summary(modelInitialC)
 
-summary(lm(log(TorPerHour) ~ maxCAPE  + maxBS_shallow  + maxVSTM + maxUSTM + maxHLCY + totalPOP, data = BigDays.sfdfT))
-
-summary(lm(log(TorPerHour) ~ maxCAPE  + maxBS_shallow  + maxVSTM + maxUSTM + maxHLCY, data = BigDays.sfdfT))
-
-summary(lm(log(TorPerHour) ~ maxCAPE  + maxBS_shallow  + maxVSTM + maxUSTM + maxHLCY + Lat + Lon , data = BigDays.sfdfT))
-#Better Model 
-
-summary(lm(log(TorPerHour) ~  maxBS_deep + minCIN  + Lat + Lon + totalPOP, data = BigDays.sfdfT))
+modelFinalC <- glm.nb(GroupDayCas ~ totalPOP + maxCAPE + maxBS_deep + maxBS_shallow + Lat + Lon + Year, data = BigDays.sfdfT)
+summary(modelFinalC)
+hist(resid(modelFinalC))
+range(exp(predict(modelFinalC)))
+plot(log(BigDays.sfdfT$GroupDayCas), predict(modelFinalC))
+cor(BigDays.sfdfT$GroupDayCas, exp(predict(modelFinalC)))
 ```
 
-## Cluster Casualties: 
 ```{r}
-summary(lm(log(GroupDayCas + 1) ~ maxCAPE + maxBS_deep + maxBS_shallow + minCIN + maxVSTM + maxUSTM + maxHLCY + totalPOP, data = BigDays.sfdfT)) 
-
-summary(lm(log(GroupDayCas + 1) ~  maxBS_deep + maxBS_shallow + minCIN + maxVSTM + maxUSTM + maxHLCY + totalPOP, data = BigDays.sfdfT)) 
-
-summary(lm(log(GroupDayCas + 1) ~  maxBS_deep + maxBS_shallow + maxUSTM + totalPOP, data = BigDays.sfdfT)) 
-
-summary(lm(log(GroupDayCas + 1) ~  maxBS_deep + maxBS_shallow + maxUSTM + totalPOP + Lat + Lon, data = BigDays.sfdfT)) 
-#Better Model!
-
-summary(lm(log(GroupDayCas + 1) ~  maxBS_deep + minCIN  + Lat + Lon + totalPOP, data = BigDays.sfdfT))
+(plotresid_cas <- ggplot(modelFinalC, aes(.resid)) + 
+  geom_histogram(bins = 30, 
+                 alpha = 0.9, 
+                 color = "white", 
+                 fill = "Grey40",
+                 size = 0.1) +
+   xlab("Residuals")  +
+  ylab("Count") + 
+ # ggtitle("B") +
+  theme_bw() +
+  theme(text = element_text(size=12), plot.background = element_rect(color = "grey40"), panel.border = element_rect(color = "white"), plot.margin=unit(c(0.5, 0.5, 0.5, 0.5),"cm")))
 ```
 
+```{r}
+predscas <- predict(modelFinalC)
+BigDays.sfdfT = cbind(BigDays.sfdfT, predscas)
+
+cc <- scales::seq_gradient_pal("skyblue", "blue")(seq(0,1,length.out=12))
+
+ggplot(BigDays.sfdfT, aes(x = log(GroupDayCas), y = predscas)) +
+  geom_point(size = 4,  show.legend = FALSE, stroke = 0, alpha = 0.8, color = "Grey40") +
+      #scale_color_continuous()
+      scale_color_manual(values = cc) +
+      #scale_colour_gradient(low = "Grey", high = "Grey70") +
+      geom_abline(slope = 1, size = 1.25) + 
+      ylab("Estimated Casualties") + xlab("Actual Casualties") +
+      scale_x_log10() +
+      scale_y_log10() +
+      theme_minimal() + theme(text = element_text(size=10), plot.background = element_rect(colour = 'grey40'))#, panel.border = element_rect(color = "Grey40")) 
+
+ggplot(BigDays.sfdfT, aes(x = GroupDayCas, y = exp(predscas-1))) +
+  geom_point(size = 4,  show.legend = FALSE, stroke = 0, alpha = 0.8, color = "Grey40") +
+      #scale_color_continuous()
+      scale_color_manual(values = cc) +
+      #scale_colour_gradient(low = "Grey", high = "Grey70") +
+      geom_abline() + 
+      ylab("Estimated Casualties") + 
+      xlab("Actual Casualties") +
+      scale_x_log10(breaks = c(0,1,  10, 50, 500, 1500, 3000), labels = c("0", "1", "10","50", "500", "1500", "3000")) +
+      scale_y_log10(breaks = c(0, 1, 10, 50, 500, 1500, 3000), labels = c("0","1", "10", "50", "500", "1500", "3000")) +
+      theme_minimal() + 
+        theme(text = element_text(size=10), plot.background = element_rect(colour = 'grey40'))
+```
+
+Fig 2: Not so elongated. Square panels. Num clus, num torn; 
 
 
 
+Use this as prospectus. THis is what you plan to do in the next 8 months. Write it up and defend dissertation. Look at how you wrote for Dr. Horners. 
