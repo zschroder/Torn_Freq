@@ -70,6 +70,17 @@ First, we extract the date, time, genesis location, and magnitude for all tornad
 
 *Compute the total number of tornadoes between 1994 and 2018.*
 ```{r}
+US_LCC <- "+proj=lcc +lat_1=33 +lat_2=45 +lat_0=39 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m no_defs"
+
+#sp::coordinates(All_Tornadoes) <- ~ elon + elat
+#Torn50_19.sfdf <- st_as_sf(Torn50_19.spdf)
+#st_crs(Torn50_19.sfdf) <- WGS84
+
+#st_crs(All_Tornadoes) <- WGS84
+#  spgeo <- st_transform(All_Tornadoes, CRS("+proj=longlat +datum=WGS84"))
+
+#All_Tornadoes <- st_transform(All_Tornadoes, crs = st_crs(US_LCC))
+Backup<- All_Tornadoes
 dim(All_Tornadoes)[1]
 #30,497
 ```
@@ -110,7 +121,7 @@ sum(BigDays.sfdfT$nT == 10)
 ```{r}
 sts <- state.name[!state.name %in% c("Alaska", "Hawaii")]
 stateBorders <- us_states(states = sts)
-#counties.sf <- us_counties()
+counties.sf <- us_counties()
 ```
 
 `Generate a color ramp that you like`
@@ -138,8 +149,6 @@ dim(BigDays.sfdfT)
 ```{r}
 merc <- "+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
 ```
-
-
 `Extract the smallest day and associated tornadoes. Get summary statistics of the big day`
 ```{r}
 #Extract the big day using the unique ID created.
@@ -203,7 +212,7 @@ A
 ```
 
 ```{r}
-All_Tornadoes<- All_Tornadoes %>%
+All_Tornadoes<- Backup %>%
    mutate(ID = paste0(gsub("-", "", cDate), groupNumber))
 ```
 
@@ -214,8 +223,6 @@ cluster2 <- BigDays.sfdfT %>%
 
 cluster2 <- st_convex_hull(cluster2)
 
-All_Tornadoes <- st_crs(All_Tornadoes, crs = "+proj=lcc +lat_1=50 +lat_2=50 +lat_0=50 +lon_0=-107 +x_0=0 +y_0=0 +a=6371200 +b=6371200 +units=m +no_defs")
-
 cluster2torns <- All_Tornadoes %>%
   filter(ID == 199906061644) 
 
@@ -225,6 +232,8 @@ cluster2 %>%
 
 cluster2torns$mag <- as.numeric(cluster2torns$mag)
 cluster2torns$mag2 <- cut(cluster2torns$mag, breaks=c(-1, 0, 1, 2, 3, 4, 5))
+
+#st_transform(cluster2torns, crs = merc)
 ```
 
 ```{r}
@@ -250,7 +259,7 @@ tm_shape(cluster2) +
     tm_layout(legend.bg.color = "white", 
             legend.text.size = .75) + 
   tm_shape(cluster2torns, 
-         projection = "+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs", 
+         projection = merc, 
          is.master = TRUE) +
     tm_symbols(size = 3, 
                col = "mag2", 
@@ -309,13 +318,14 @@ Group_23 <- All_Tornadoes %>%
             EndTime_CST= last(DateTime),
             StartTime_UTC = StartTime_CST + 21600,
             EndTime_UTC = EndTime_CST + 21600,
-            Duration = difftime(EndTime_CST, StartTime_CST, units = "secs")) %>%
-  filter(nT >= 10) %>%
-  mutate(Year = year(cDate),
-         Mo = month(cDate),
-         Month = format(cDate, "%m"), # this is needed to preserve the leading zeros
-         Day = format(cDate, "%d"), 
-         ATP_TW = ATP/10^12) 
+            Duration = difftime(EndTime_CST, StartTime_CST, units = "secs")) #%>%
+  #filter(nT >= 10) %>%
+
+ # mutate(Year = year(cDate),
+  #       Mo = month(cDate),
+   #      Month = format(cDate, "%m"), # this is needed to preserve the leading zeros
+    #     Day = format(cDate, "%d"), 
+    #     ATP_TW = ATP/10^12) 
 ```
 
 ```{r}
@@ -430,7 +440,8 @@ minLCL <- numeric()
  
 for(i in 1){
   print(i)
-  rb <- brick(paste0("/Users/lordofmornin/Desktop/Projects/Torn_Freq/", Group_23$slug2[i], "/", Group_23$slug[i])) #<-- this is for varying NARR times
+  rb <- brick(paste0("/Users/zoeschroder/Desktop/Projects/Torn_Freq/", Group_23$slug2[i], "/", Group_23$slug[i]))
+ # rb <- brick(paste0("/Users/lordofmornin/Desktop/Projects/Torn_Freq/", Group_23$slug2[i], "/", Group_23$slug[i])) #<-- this is for varying NARR times
   CAPE <- raster(rb, layer = 375)
   sbCAPE <- raster(rb, layer = 315)
   DEW <- raster(rb, layer = 290)
@@ -451,34 +462,34 @@ for(i in 1){
   RATIO <- CAPE/abs(CIN)
   BS_deep <- sqrt(((UGRD500 - UGRDsfc)**2) + ((VGRD500 - VGRDsfc)**2))
   BS_shallow <- sqrt(((UGRD850 - UGRDsfc)**2) + ((VGRD850 - VGRDsfc)**2))
-  avgCAPE <- c(avgCAPE, as.numeric(raster::extract(CAPE, BigDays.sfdfT[i, ], fun = mean)))
-  avgsbCAPE <- c(avgsbCAPE, as.numeric(raster::extract(sbCAPE, BigDays.sfdfT[i, ], fun = mean)))
-  maxCAPE <- c(maxCAPE, as.numeric(raster::extract(CAPE, BigDays.sfdfT[i, ], fun = max)))
-  maxsbCAPE <- c(maxsbCAPE, as.numeric(raster::extract(sbCAPE, BigDays.sfdfT[i, ], fun = max)))
-  avgDEW <- c(avgDEW, as.numeric(raster::extract(DEW, BigDays.sfdfT[i, ], fun = mean)))
-  maxDEW <- c(maxDEW, as.numeric(raster::extract(DEW, BigDays.sfdfT[i, ], fun = max)))
-  avgMR <- c(avgMR, as.numeric(raster::extract(MR, BigDays.sfdfT[i, ], fun = mean)))
-  maxMR <- c(maxMR, as.numeric(raster::extract(MR, BigDays.sfdfT[i, ], fun = max)))
-  avgHLCY <- c(avgHLCY, as.numeric(raster::extract(HLCY, BigDays.sfdfT[i, ], fun = mean)))
-  maxHLCY <- c(maxHLCY, as.numeric(raster::extract(HLCY, BigDays.sfdfT[i, ], fun = max)))
-  avgCIN <- c(avgCIN, as.numeric(raster::extract(CIN, BigDays.sfdfT[i, ], fun = mean)))
-  avgsbCIN <- c(avgsbCIN, as.numeric(raster::extract(sbCIN, BigDays.sfdfT[i, ], fun = mean)))
-  minCIN <- c(minCIN, as.numeric(raster::extract(CIN, BigDays.sfdfT[i, ], fun = min)))
-  minsbCIN <- c(minsbCIN, as.numeric(raster::extract(sbCIN, BigDays.sfdfT[i, ], fun = min)))
-  avgUSTM <- c(avgUSTM, as.numeric(raster::extract(USTM, BigDays.sfdfT[i, ], fun = mean)))
-  maxUSTM <- c(maxUSTM, as.numeric(raster::extract(USTM, BigDays.sfdfT[i, ], fun = max)))
-  avgVSTM <- c(avgVSTM, as.numeric(raster::extract(VSTM, BigDays.sfdfT[i, ], fun = mean)))
-  maxVSTM <- c(maxVSTM, as.numeric(raster::extract(VSTM, BigDays.sfdfT[i, ], fun = max)))
-  avgSM <- c(avgSM, as.numeric(raster::extract(SM, BigDays.sfdfT[i, ], fun = mean)))
-  maxSM <- c(maxSM, as.numeric(raster::extract(SM, BigDays.sfdfT[i, ], fun = max)))
-  avgRATIO <- c(avgRATIO, as.numeric(raster::extract(RATIO, BigDays.sfdfT[i, ], fun = mean)))
-  avgBS_deep <- c(avgBS_deep, as.numeric(raster::extract(BS_deep, BigDays.sfdfT[i, ], fun = mean)))
-  maxBS_deep <- c(maxBS_deep, as.numeric(raster::extract(BS_deep, BigDays.sfdfT[i, ], fun = max)))  
-  avgBS_shallow <- c(avgBS_shallow, as.numeric(raster::extract(BS_shallow, BigDays.sfdfT[i, ], fun = mean)))
-  maxBS_shallow <- c(maxBS_shallow, as.numeric(raster::extract(BS_shallow, BigDays.sfdfT[i, ], fun = max)))
-  avgLCL <- c(avgLCL, as.numeric(raster::extract(LCL, BigDays.sfdfT[i,], fun = mean)))
-  maxLCL <- c(maxLCL, as.numeric(raster::extract(LCL, BigDays.sfdfT[i,], fun = max)))
-  minLCL <- c(minLCL, as.numeric(raster::extract(LCL, BigDays.sfdfT[i,], fun = min)))
+  avgCAPE <- c(avgCAPE, as.numeric(raster::extract(CAPE, Group_23[i, ], fun = mean)))
+  avgsbCAPE <- c(avgsbCAPE, as.numeric(raster::extract(sbCAPE, Group_23[i, ], fun = mean)))
+  maxCAPE <- c(maxCAPE, as.numeric(raster::extract(CAPE, Group_23[i, ], fun = max)))
+  maxsbCAPE <- c(maxsbCAPE, as.numeric(raster::extract(sbCAPE, Group_23[i, ], fun = max)))
+  avgDEW <- c(avgDEW, as.numeric(raster::extract(DEW, Group_23[i, ], fun = mean)))
+  maxDEW <- c(maxDEW, as.numeric(raster::extract(DEW, Group_23[i, ], fun = max)))
+  avgMR <- c(avgMR, as.numeric(raster::extract(MR, Group_23[i, ], fun = mean)))
+  maxMR <- c(maxMR, as.numeric(raster::extract(MR, Group_23[i, ], fun = max)))
+  avgHLCY <- c(avgHLCY, as.numeric(raster::extract(HLCY, Group_23[i, ], fun = mean)))
+  maxHLCY <- c(maxHLCY, as.numeric(raster::extract(HLCY, Group_23[i, ], fun = max)))
+  avgCIN <- c(avgCIN, as.numeric(raster::extract(CIN, Group_23[i, ], fun = mean)))
+  avgsbCIN <- c(avgsbCIN, as.numeric(raster::extract(sbCIN, Group_23[i, ], fun = mean)))
+  minCIN <- c(minCIN, as.numeric(raster::extract(CIN, Group_23[i, ], fun = min)))
+  minsbCIN <- c(minsbCIN, as.numeric(raster::extract(sbCIN, Group_23[i, ], fun = min)))
+  avgUSTM <- c(avgUSTM, as.numeric(raster::extract(USTM, Group_23[i, ], fun = mean)))
+  maxUSTM <- c(maxUSTM, as.numeric(raster::extract(USTM, Group_23[i, ], fun = max)))
+  avgVSTM <- c(avgVSTM, as.numeric(raster::extract(VSTM, Group_23[i, ], fun = mean)))
+  maxVSTM <- c(maxVSTM, as.numeric(raster::extract(VSTM, Group_23[i, ], fun = max)))
+  avgSM <- c(avgSM, as.numeric(raster::extract(SM, Group_23[i, ], fun = mean)))
+  maxSM <- c(maxSM, as.numeric(raster::extract(SM, Group_23[i, ], fun = max)))
+  avgRATIO <- c(avgRATIO, as.numeric(raster::extract(RATIO, Group_23[i, ], fun = mean)))
+  avgBS_deep <- c(avgBS_deep, as.numeric(raster::extract(BS_deep, Group_23[i, ], fun = mean)))
+  maxBS_deep <- c(maxBS_deep, as.numeric(raster::extract(BS_deep, Group_23[i, ], fun = max)))  
+  avgBS_shallow <- c(avgBS_shallow, as.numeric(raster::extract(BS_shallow, Group_23[i, ], fun = mean)))
+  maxBS_shallow <- c(maxBS_shallow, as.numeric(raster::extract(BS_shallow, Group_23[i, ], fun = max)))
+  avgLCL <- c(avgLCL, as.numeric(raster::extract(LCL, Group_23[i,], fun = mean)))
+  maxLCL <- c(maxLCL, as.numeric(raster::extract(LCL, Group_23[i,], fun = max)))
+  minLCL <- c(minLCL, as.numeric(raster::extract(LCL, Group_23[i,], fun = min)))
 }
 ```
 
@@ -517,7 +528,8 @@ Group_23$avgLCL <- avgLCL
 ```{r}
 for(i in 1){
   print(i)
-  rb <- brick(paste0("/Users/lordofmornin/Desktop/Projects/Torn_Freq/", Group_23$slug2[i], "/", Group_23$slug[i]))
+    rb <- brick(paste0("/Users/zoeschroder/Desktop/Projects/Torn_Freq/", Group_23$slug2[i], "/", Group_23$slug[i]))
+  #rb <- brick(paste0("/Users/lordofmornin/Desktop/Projects/Torn_Freq/", Group_23$slug2[i], "/", Group_23$slug[i]))
   CAPE <- raster(rb, layer = 375)
   HLCY <- raster(rb, layer = 323)
   CIN <- raster(rb, layer = 376)
@@ -548,13 +560,13 @@ June6 <- BigDays.sfdfT %>%
 June6 <- st_convex_hull(June6)
 June6centroid <- groupDayCentroids.sfdfT %>%
   filter(ID == "199906061644")
-June6tornadoes <- BigDayTornadoes %>% 
+June6tornadoes <- All_Tornadoes %>% 
   filter(ID == "199906061644")
 ```
 *Plot the CAPE, HLCY, and CIN for the June 6, 2003 Big Day. First, read in the raster. *
 ```{r}
 i=1
-  rb <- brick(paste0("/Volumes/Zoe's Home/NCARNARR/All/", BigDays.sfdfT$slug2[i], "/",BigDays.sfdfT$slug[i])) #<-- this is for varying NARR times
+   rb <- brick(paste0("/Users/zoeschroder/Desktop/Projects/Torn_Freq/", Group_23$slug2[i], "/", Group_23$slug[i])) #rb <- brick(paste0("/Volumes/Zoe's Home/NCARNARR/All/", BigDays.sfdfT$slug2[i], "/",BigDays.sfdfT$slug[i])) #<-- this is for varying NARR times
   CAPE <- raster(rb, layer = 375)
   HLCY <- raster(rb, layer = 323)
   CIN <- raster(rb, layer = 376)
@@ -574,6 +586,7 @@ maxCAPE <- which.max(CAPE_extent) #Returns a pixel number
 test <- getValues(CAPE_extent) 
 test<-as.matrix(test, ncol=1)
 ```
+
 ```{r}
 CAPEmaxpos <- xyFromCell(CAPE_extent, maxCAPE)
 xy <- data.frame(CAPEmaxpos)
@@ -582,90 +595,102 @@ print(CAPE_latlon)
 CAPE_latlon <- SpatialPoints(CAPE_latlon)
 proj4string(CAPE_latlon) = CRS("+proj=lcc +lat_1=50 +lat_2=50 +lat_0=50 +lon_0=-107 +x_0=0 +y_0=0 +a=6371200 +b=6371200 +units=m +no_defs")
 ```
+
 ```{r}
-install.packages("USAboundariesData")
+#install.packages("USAboundariesData")
 counties <- us_counties()
 states <- us_states()
 ```
+
 ```{r, eval = FALSE}
 p1 <- tm_shape(CAPE_extent) +
   tm_raster(title = "",  n = 6, palette = "Greys") +
-  tm_format(title = expression(paste("CAPE [J ", kg^-1, "]")), "World", legend.position = c("right", "bottom"),
-                   attr.position = c("right", "bottom"),
+  tm_format(title = expression(paste("CAPE [J ", kg^-1, "]")), "World", legend.position = c("left", "bottom"),
+                   attr.position = c("left", "bottom"),
                    legend.frame = FALSE,
-                   inner.margins = c(.1, 0, .1, .18), #bottom, left, top
+                   inner.margins = c(.1, 0.18, .1, .18), #bottom, left, top
                     legend.text.size = 1, legend.width = -0.28, legend.title.size=1, legend.bg.color = "white", title.size = 1.4) +
 #tm_shape(counties) +
   #tm_borders(col = "grey") +
   tm_scale_bar(width = 0.3, size = 0.8, position = c("right", "top"), color.dark = "gray70") +
 tm_shape(states) +
   tm_borders() +
-tm_shape(June6, is.master = TRUE, projection = "merc") +
+tm_shape(June6, is.master = TRUE, projection = merc) +
   tm_borders(col = "black", lwd = 3)  +
-#tm_shape(June6centroid) +
+#tm_shape(June6tornadoes) +
 #  tm_symbols(size = 1.25, col = "black", shape = 24) +
 tm_shape(CAPE_latlon) + 
-  tm_symbols(size = 1.4, col = "black", shape = 22)
+  tm_symbols(size = 1.4, col = "black", shape = 22) + 
+    tm_shape(June6tornadoes, 
+         projection = "+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs", 
+         is.master = TRUE) +
+    tm_symbols(size = 3)
 p1
 ```
 
 
+```{r}
+cluster2 <- BigDays.sfdfT %>%
+  filter(ID == 199906061644)
+
+#test<- st_crs(All_Tornadoes, "+proj=lcc +lat_1=50 +lat_2=50 +lat_0=50 +lon_0=-107 +x_0=0 +y_0=0 +a=6371200 +b=6371200 +units=m +no_defs")
+
+All_Tornadoes <- st_transform(All_Tornadoes, 
+  crs = "+proj=lcc +lat_1=50 +lat_2=50 +lat_0=50 +lon_0=-107 +x_0=0 +y_0=0 +a=6371200 +b=6371200 +units=m +no_defs")
+
+G23torns <- All_Tornadoes %>%
+  filter(ID == 199906061644, elat >= 46) 
+
+G23torns$mag <- as.numeric(G23torns$mag)
+G23torns$mag2 <- cut(G23torns$mag, breaks=c(-1, 0, 1, 2, 3, 4, 5))
 
 
+G23 <- All_Tornadoes %>%
+  filter(ID == 199906061644, elat >= 46) %>%
+  group_by(groupNumber, cDate) %>%
+  summarize(nT = n(),
+            n0 = sum(mag == 0),
+            n1 = sum(mag == 1),
+            n2 = sum(mag == 2),
+            n3 = sum(mag == 3),
+            n4 = sum(mag == 4),
+            n5 = sum(mag == 5),
+            ATP = sum(ED),
+            maxATP = max(ED),
+            avgATP = mean(ED),
+            GroupDayCas = sum(cas),
+            GroupDayFat = sum(fat),
+            StartTime_CST = first(DateTime),
+            EndTime_CST= last(DateTime),
+            StartTime_UTC = StartTime_CST + 21600,
+            EndTime_UTC = EndTime_CST + 21600,
+            Duration = difftime(EndTime_CST, StartTime_CST, units = "secs")) #%>%
+  #filter(nT >= 10) %>%
 
+ # mutate(Year = year(cDate),
+  #       Mo = month(cDate),
+   #      Month = format(cDate, "%m"), # this is needed to preserve the leading zeros
+    #     Day = format(cDate, "%d"), 
+    #     ATP_TW = ATP/10^12) 
 
+G23 <- st_convex_hull(G23)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+G23DayCentroids.sfdfT <- st_centroid(G23)
+G23DayCentroids.sfdfT$groupArea <- st_area(st_convex_hull(G23))
+#G23DayCentroids.sfdfT$groupDensity
+```
 
 
 **Convective Available Potential energy **
 ```{r}
-WGS84 <- 4326
-test<-(Group_23)
 
-
-CAPE_Group23 <- crop(CAPE, extent(test))
-CAPE_extent<- mask(CAPE_Group23, test)
+CAPE_G23 <- crop(CAPE, extent(G23))
+CAPE_extent<- mask(CAPE_G23, G23)
 plot(CAPE_extent)
 maxCAPE <- which.max(CAPE_extent) #Returns a pixel number
 #Test that this max value equals the one in BigDays.sfdfT
-test1 <- getValues(CAPE_extent) 
-test1<-as.matrix(test1, ncol=1)
+test <- getValues(CAPE_extent) 
+test<-as.matrix(test, ncol=1)
 ```
 
 ```{r}
@@ -674,15 +699,7 @@ xy <- data.frame(CAPEmaxpos)
 CAPE_latlon <- data.frame(lon=xy$x, lat=xy$y)
 print(CAPE_latlon)
 CAPE_latlon <- SpatialPoints(CAPE_latlon)
-CAPE_latlon = st_transform(CAPE_latlon, 
-  crs = "+proj=lcc +lat_1=50 +lat_2=50 +lat_0=50 +lon_0=-107 +x_0=0 +y_0=0 +a=6371200 +b=6371200 +units=m +no_defs")
-
-CAPE_latlon <- st_transform(CAPE_latlon, crs = st_crs(US_LCC))
-```
-
-```{r}
-counties <- us_counties()
-states <- us_states()
+proj4string(CAPE_latlon) = CRS("+proj=lcc +lat_1=50 +lat_2=50 +lat_0=50 +lon_0=-107 +x_0=0 +y_0=0 +a=6371200 +b=6371200 +units=m +no_defs")
 ```
 
 ```{r, eval = FALSE}
@@ -696,48 +713,60 @@ p1 <- tm_shape(CAPE_extent) +
 #tm_shape(counties) +
   #tm_borders(col = "grey") +
   tm_scale_bar(width = 0.3, size = 0.8, position = c("right", "top"), color.dark = "gray70") +
-tm_shape(states) +
+tm_shape(stateBorders) +
   tm_borders() +
-tm_shape(J6_1, is.master = TRUE, projection = merc) +
+tm_shape(G23, is.master = TRUE, projection = merc) +
   tm_borders(col = "black", lwd = 3)  +
-#tm_shape(June6centroid) +
+#tm_shape(June6tornadoes) +
 #  tm_symbols(size = 1.25, col = "black", shape = 24) +
 tm_shape(CAPE_latlon) + 
-  tm_symbols(size = 1.4, col = "black", shape = 22)
+  tm_symbols(size = 1.4, col = "black", shape = 22) + 
+    tm_shape(G23torns, 
+         projection = "+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs", 
+         is.master = TRUE) +
+    tm_symbols(size = 3)
 p1
 ```
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+KEEP: 
 ```{r}
+cluster2torns <- All_Tornadoes %>%
+  filter(ID == 199906061644) 
 Group1$HullArea <- st_area(Group1)
 Group1Hull <- st_convex_hull(Group1)
-
+Group1torns <- cluster2torns %>%
+  filter(elat >= 46)
 Group2torns <- cluster2torns %>%
   filter(elat < 46)
+Group1 <- All_Tornadoes %>%
+  filter(ID == 199906061644, elat >= 46) %>%
+  group_by(groupNumber, cDate) %>%
+  summarize(nT = n(),
+            n0 = sum(mag == 0),
+            n1 = sum(mag == 1),
+            n2 = sum(mag == 2),
+            n3 = sum(mag == 3),
+            n4 = sum(mag == 4),
+            n5 = sum(mag == 5),
+            ATP = sum(ED),
+            maxATP = max(ED),
+            avgATP = mean(ED),
+            GroupDayCas = sum(cas),
+            GroupDayFat = sum(fat),
+            StartTime_CST = first(DateTime),
+            EndTime_CST= last(DateTime),
+            StartTime_UTC = StartTime_CST + 21600,
+            EndTime_UTC = EndTime_CST + 21600,
+            Duration = difftime(EndTime_CST, StartTime_CST, units = "secs")) %>%
+  filter(nT >= 10) %>%
+  mutate(Year = year(cDate),
+         Mo = month(cDate),
+         Month = format(cDate, "%m"), # this is needed to preserve the leading zeros
+         Day = format(cDate, "%d"), 
+         ATP_TW = ATP/10^12) 
 
 Group2 <- All_Tornadoes %>%
   filter(ID == 199906061644, elat < 46) %>%
@@ -775,15 +804,6 @@ Group2torns$mag2 <- cut(Group2torns$mag, breaks=c(-1, 0, 1, 2, 3, 4, 5))
 ```
 
 ```{r}
-Group1 <- cluster2torns %>%
-  filter(elat >= 46)
-
-
-
-G1
-Group2 <- cluster2torns %>%
-  filter(elat < 46)
-
 G2 <- tm_shape(stateBorders) + 
   tm_borders(col = "gray70") +
 tm_shape(Group2Hull) + 
@@ -830,12 +850,16 @@ G2
 
 ```{r}
 tmap_arrange(G1, G2)
+```
+
+```{r}
+June6_tornadoes <- rbind(Group1torns, Group2torns)
 June6 <- rbind(Group1, Group2)
 June6$HullArea <- st_area(June6)
 June6 <- st_convex_hull(June6)
 
-June6 <- st_transform(June6, 
-  crs = "+proj=lcc +lat_1=50 +lat_2=50 +lat_0=50 +lon_0=-107 +x_0=0 +y_0=0 +a=6371200 +b=6371200 +units=m +no_defs")
+June6_tornadoes <- st_transform(June6_tornadoes, 
+  crs = "+proj=lcc +lat_0=50 +lon_0=-107 +lat_1=50 +lat_2=50 +x_0=0 +y_0=0 +R=6371200 +units=m +no_defs ")
 ```
 
 Get the centroid (central point of the tornado activity) for each big day. 
@@ -899,7 +923,7 @@ minLCL <- numeric()
  
 for(i in 1:2){
   print(i)
-  rb <- brick(paste0("/Volumes/Zoe's Home/NCARNARR/All/", BigDays.sfdfT$slug2[i], "/",BigDays.sfdfT$slug[i])) #<-- this is for varying NARR times
+   rb <- brick(paste0("/Users/zoeschroder/Desktop/Projects/Torn_Freq/", June6$slug2[i], "/", June6$slug[i])) #<-- this is for varying NARR times
   CAPE <- raster(rb, layer = 375)
   sbCAPE <- raster(rb, layer = 315)
   DEW <- raster(rb, layer = 290)
@@ -920,34 +944,34 @@ for(i in 1:2){
   RATIO <- CAPE/abs(CIN)
   BS_deep <- sqrt(((UGRD500 - UGRDsfc)**2) + ((VGRD500 - VGRDsfc)**2))
   BS_shallow <- sqrt(((UGRD850 - UGRDsfc)**2) + ((VGRD850 - VGRDsfc)**2))
-  avgCAPE <- c(avgCAPE, as.numeric(raster::extract(CAPE, BigDays.sfdfT[i, ], fun = mean)))
-  avgsbCAPE <- c(avgsbCAPE, as.numeric(raster::extract(sbCAPE, BigDays.sfdfT[i, ], fun = mean)))
-  maxCAPE <- c(maxCAPE, as.numeric(raster::extract(CAPE, BigDays.sfdfT[i, ], fun = max)))
-  maxsbCAPE <- c(maxsbCAPE, as.numeric(raster::extract(sbCAPE, BigDays.sfdfT[i, ], fun = max)))
-  avgDEW <- c(avgDEW, as.numeric(raster::extract(DEW, BigDays.sfdfT[i, ], fun = mean)))
-  maxDEW <- c(maxDEW, as.numeric(raster::extract(DEW, BigDays.sfdfT[i, ], fun = max)))
-  avgMR <- c(avgMR, as.numeric(raster::extract(MR, BigDays.sfdfT[i, ], fun = mean)))
-  maxMR <- c(maxMR, as.numeric(raster::extract(MR, BigDays.sfdfT[i, ], fun = max)))
-  avgHLCY <- c(avgHLCY, as.numeric(raster::extract(HLCY, BigDays.sfdfT[i, ], fun = mean)))
-  maxHLCY <- c(maxHLCY, as.numeric(raster::extract(HLCY, BigDays.sfdfT[i, ], fun = max)))
-  avgCIN <- c(avgCIN, as.numeric(raster::extract(CIN, BigDays.sfdfT[i, ], fun = mean)))
-  avgsbCIN <- c(avgsbCIN, as.numeric(raster::extract(sbCIN, BigDays.sfdfT[i, ], fun = mean)))
-  minCIN <- c(minCIN, as.numeric(raster::extract(CIN, BigDays.sfdfT[i, ], fun = min)))
-  minsbCIN <- c(minsbCIN, as.numeric(raster::extract(sbCIN, BigDays.sfdfT[i, ], fun = min)))
-  avgUSTM <- c(avgUSTM, as.numeric(raster::extract(USTM, BigDays.sfdfT[i, ], fun = mean)))
-  maxUSTM <- c(maxUSTM, as.numeric(raster::extract(USTM, BigDays.sfdfT[i, ], fun = max)))
-  avgVSTM <- c(avgVSTM, as.numeric(raster::extract(VSTM, BigDays.sfdfT[i, ], fun = mean)))
-  maxVSTM <- c(maxVSTM, as.numeric(raster::extract(VSTM, BigDays.sfdfT[i, ], fun = max)))
-  avgSM <- c(avgSM, as.numeric(raster::extract(SM, BigDays.sfdfT[i, ], fun = mean)))
-  maxSM <- c(maxSM, as.numeric(raster::extract(SM, BigDays.sfdfT[i, ], fun = max)))
-  avgRATIO <- c(avgRATIO, as.numeric(raster::extract(RATIO, BigDays.sfdfT[i, ], fun = mean)))
-  avgBS_deep <- c(avgBS_deep, as.numeric(raster::extract(BS_deep, BigDays.sfdfT[i, ], fun = mean)))
-  maxBS_deep <- c(maxBS_deep, as.numeric(raster::extract(BS_deep, BigDays.sfdfT[i, ], fun = max)))  
-  avgBS_shallow <- c(avgBS_shallow, as.numeric(raster::extract(BS_shallow, BigDays.sfdfT[i, ], fun = mean)))
-  maxBS_shallow <- c(maxBS_shallow, as.numeric(raster::extract(BS_shallow, BigDays.sfdfT[i, ], fun = max)))
-  avgLCL <- c(avgLCL, as.numeric(raster::extract(LCL, BigDays.sfdfT[i,], fun = mean)))
-  maxLCL <- c(maxLCL, as.numeric(raster::extract(LCL, BigDays.sfdfT[i,], fun = max)))
-  minLCL <- c(minLCL, as.numeric(raster::extract(LCL, BigDays.sfdfT[i,], fun = min)))
+  avgCAPE <- c(avgCAPE, as.numeric(raster::extract(CAPE, June6[i, ], fun = mean)))
+  avgsbCAPE <- c(avgsbCAPE, as.numeric(raster::extract(sbCAPE, June6[i, ], fun = mean)))
+  maxCAPE <- c(maxCAPE, as.numeric(raster::extract(CAPE, June6[i, ], fun = max)))
+  maxsbCAPE <- c(maxsbCAPE, as.numeric(raster::extract(sbCAPE, June6[i, ], fun = max)))
+  avgDEW <- c(avgDEW, as.numeric(raster::extract(DEW, June6[i, ], fun = mean)))
+  maxDEW <- c(maxDEW, as.numeric(raster::extract(DEW, June6[i, ], fun = max)))
+  avgMR <- c(avgMR, as.numeric(raster::extract(MR, June6[i, ], fun = mean)))
+  maxMR <- c(maxMR, as.numeric(raster::extract(MR, June6[i, ], fun = max)))
+  avgHLCY <- c(avgHLCY, as.numeric(raster::extract(HLCY, June6[i, ], fun = mean)))
+  maxHLCY <- c(maxHLCY, as.numeric(raster::extract(HLCY, June6[i, ], fun = max)))
+  avgCIN <- c(avgCIN, as.numeric(raster::extract(CIN, June6[i, ], fun = mean)))
+  avgsbCIN <- c(avgsbCIN, as.numeric(raster::extract(sbCIN, June6[i, ], fun = mean)))
+  minCIN <- c(minCIN, as.numeric(raster::extract(CIN, June6[i, ], fun = min)))
+  minsbCIN <- c(minsbCIN, as.numeric(raster::extract(sbCIN, June6[i, ], fun = min)))
+  avgUSTM <- c(avgUSTM, as.numeric(raster::extract(USTM, June6[i, ], fun = mean)))
+  maxUSTM <- c(maxUSTM, as.numeric(raster::extract(USTM, June6[i, ], fun = max)))
+  avgVSTM <- c(avgVSTM, as.numeric(raster::extract(VSTM, June6[i, ], fun = mean)))
+  maxVSTM <- c(maxVSTM, as.numeric(raster::extract(VSTM, June6[i, ], fun = max)))
+  avgSM <- c(avgSM, as.numeric(raster::extract(SM, June6[i, ], fun = mean)))
+  maxSM <- c(maxSM, as.numeric(raster::extract(SM, June6[i, ], fun = max)))
+  avgRATIO <- c(avgRATIO, as.numeric(raster::extract(RATIO, June6[i, ], fun = mean)))
+  avgBS_deep <- c(avgBS_deep, as.numeric(raster::extract(BS_deep, June6[i, ], fun = mean)))
+  maxBS_deep <- c(maxBS_deep, as.numeric(raster::extract(BS_deep, June6[i, ], fun = max)))  
+  avgBS_shallow <- c(avgBS_shallow, as.numeric(raster::extract(BS_shallow, June6[i, ], fun = mean)))
+  maxBS_shallow <- c(maxBS_shallow, as.numeric(raster::extract(BS_shallow, June6[i, ], fun = max)))
+  avgLCL <- c(avgLCL, as.numeric(raster::extract(LCL, June6[i,], fun = mean)))
+  maxLCL <- c(maxLCL, as.numeric(raster::extract(LCL, June6[i,], fun = max)))
+  minLCL <- c(minLCL, as.numeric(raster::extract(LCL, June6[i,], fun = min)))
 }
 ```
 
@@ -991,14 +1015,83 @@ x<- June6 %>%
             maxDLBS = maxBS_deep,
             maxSLBS = maxBS_shallow,
             minCIN = minCIN)
-
+x
 ```
+
+```{r}
+CAPE_June6 <- crop(CAPE, extent(June6))
+CAPE_extent<- mask(CAPE_June6, June6)
+plot(CAPE_extent)
+maxCAPE <- which.max(CAPE_extent) #Returns a pixel number
+#Test that this max value equals the one in BigDays.sfdfT
+test <- getValues(CAPE_extent) 
+test<-as.matrix(test, ncol=1)
+```
+
+```{r}
+CAPEmaxpos <- xyFromCell(CAPE_extent, maxCAPE)
+xy <- data.frame(CAPEmaxpos)
+CAPE_latlon <- data.frame(lon=xy$x, lat=xy$y)
+print(CAPE_latlon)
+CAPE_latlon <- SpatialPoints(CAPE_latlon)
+proj4string(CAPE_latlon) = CRS("+proj=lcc +lat_1=50 +lat_2=50 +lat_0=50 +lon_0=-107 +x_0=0 +y_0=0 +a=6371200 +b=6371200 +units=m +no_defs")
+```
+
+```{r}
+#install.packages("USAboundariesData")
+counties <- us_counties()
+states <- us_states()
+```
+
+```{r, eval = FALSE}
+p1 <- tm_shape(CAPE_extent) +
+  tm_raster(title = "",  n = 6, palette = "Greys") +
+  tm_format(title = expression(paste("CAPE [J ", kg^-1, "]")), "World", legend.position = c("left", "bottom"),
+                   attr.position = c("left", "bottom"),
+                   legend.frame = FALSE,
+                   inner.margins = c(.1, 0.18, .1, .18), #bottom, left, top
+                    legend.text.size = 1, legend.width = -0.28, legend.title.size=1, legend.bg.color = "white", title.size = 1.4) +
+#tm_shape(counties) +
+  #tm_borders(col = "grey") +
+  tm_scale_bar(width = 0.3, size = 0.8, position = c("right", "top"), color.dark = "gray70") +
+tm_shape(states) +
+  tm_borders() +
+tm_shape(June6, is.master = TRUE, projection = merc) +
+  tm_borders(col = "black", lwd = 3)  +
+#tm_shape(June6tornadoes) +
+#  tm_symbols(size = 1.25, col = "black", shape = 24) +
+tm_shape(CAPE_latlon) + 
+  tm_symbols(size = 1.4, col = "black", shape = 22) + 
+    tm_shape(June6tornadoes, 
+         projection = "+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs", 
+         is.master = TRUE) +
+    tm_symbols(size = 3)
+p1
+```
+
+```{r}
+st_crs(CAPE)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```{r}
 #<-- this is for varying NARR times
 for(i in 1:1){
   print(i)
-rb <- brick(paste0("/Volumes/Zoe's Home/NCARNARR/All/", June6$slug2[i], "/", June6$slug[i]))
+   rb <- brick(paste0("/Users/zoeschroder/Desktop/Projects/Torn_Freq/", June6$slug2[i], "/", June6$slug[i]))
   CAPE <- raster(rb, layer = 375)
   HLCY <- raster(rb, layer = 323)
   CIN <- raster(rb, layer = 376)
@@ -1011,7 +1104,7 @@ rb <- brick(paste0("/Volumes/Zoe's Home/NCARNARR/All/", June6$slug2[i], "/", Jun
 
 for(i in 2:2){
   print(i)
-rb <- brick(paste0("/Volumes/Zoe's Home/NCARNARR/All/", June6$slug2[i], "/", June6$slug[i]))
+   rb <- brick(paste0("/Users/zoeschroder/Desktop/Projects/Torn_Freq/", June6$slug2[i], "/", June6$slug[i]))
   CAPE2 <- raster(rb, layer = 375)
   HLCY2 <- raster(rb, layer = 323)
   CIN2 <- raster(rb, layer = 376)
@@ -1027,7 +1120,7 @@ rb <- brick(paste0("/Volumes/Zoe's Home/NCARNARR/All/", June6$slug2[i], "/", Jun
 June6 <- st_transform(June6, 
   crs = "+proj=lcc +lat_1=50 +lat_2=50 +lat_0=50 +lon_0=-107 +x_0=0 +y_0=0 +a=6371200 +b=6371200 +units=m +no_defs")
 
-J6_1 <- June6[2,]
+J6_1 <- June6[1,]
 CAPE_June6 <- crop(CAPE, extent(J6_1))
 CAPE_extent<- mask(CAPE_June6, J6_1)
 plot(CAPE_extent)
@@ -1038,41 +1131,33 @@ test<-as.matrix(test, ncol=1)
 ```
 
 ```{r}
-CAPEmaxpos <- xyFromCell(CAPE_extent, maxCAPE)
-xy <- data.frame(CAPEmaxpos)
-CAPE_latlon <- data.frame(lon=xy$x, lat=xy$y)
-print(CAPE_latlon)
-CAPE_latlon <- SpatialPoints(CAPE_latlon)
-CAPE_latlon = st_transform(CAPE_latlon, 
-  crs = "+proj=lcc +lat_1=50 +lat_2=50 +lat_0=50 +lon_0=-107 +x_0=0 +y_0=0 +a=6371200 +b=6371200 +units=m +no_defs")
-
-CAPE_latlon <- st_transform(CAPE_latlon, crs = st_crs(US_LCC))
-```
-
-```{r}
 counties <- us_counties()
 states <- us_states()
 ```
 
 ```{r, eval = FALSE}
+
 p1 <- tm_shape(CAPE_extent) +
   tm_raster(title = "",  n = 6, palette = "Greys") +
   tm_format(title = expression(paste("CAPE [J ", kg^-1, "]")), "World", legend.position = c("right", "bottom"),
                    attr.position = c("right", "bottom"),
                    legend.frame = FALSE,
-                   inner.margins = c(.1, 0, .1, .18), #bottom, left, top
+                   inner.margins = c(.3, 0.3, .3, .3), #bottom, left, top
                     legend.text.size = 1, legend.width = -0.28, legend.title.size=1, legend.bg.color = "white", title.size = 1.4) +
 #tm_shape(counties) +
-  #tm_borders(col = "grey") +
-  tm_scale_bar(width = 0.3, size = 0.8, position = c("right", "top"), color.dark = "gray70") +
-tm_shape(states) +
+#  tm_borders(col = "grey") +
+#  tm_scale_bar(width = 0.3, size = 0.8, position = c("right", "top"), color.dark = "gray70") +
+tm_shape(stateBorders, projection = merc, is.master=TRUE) +
   tm_borders() +
-tm_shape(J6_1, is.master = TRUE, projection = merc) +
-  tm_borders(col = "black", lwd = 3)  +
+tm_shape(J6_1) +
+  tm_borders(col = "black", lwd = 3)   +
+tm_shape(Group1torns, 
+         is.master = TRUE) +
+    tm_symbols(size = 3)#+
 #tm_shape(June6centroid) +
 #  tm_symbols(size = 1.25, col = "black", shape = 24) +
-tm_shape(CAPE_latlon) + 
-  tm_symbols(size = 1.4, col = "black", shape = 22)
+#tm_shape(CAPE_latlon) + 
+#  tm_symbols(size = 1.4, col = "black", shape = 22)
 p1
 ```
 
